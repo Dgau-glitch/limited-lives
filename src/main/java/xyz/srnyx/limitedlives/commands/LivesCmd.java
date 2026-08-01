@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import org.bukkit.Location;
+import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.command.CommandSender;
@@ -25,6 +26,7 @@ import xyz.srnyx.limitedlives.LimitedLives;
 import xyz.srnyx.limitedlives.config.Feature;
 import xyz.srnyx.limitedlives.managers.player.PlayerManager;
 import xyz.srnyx.limitedlives.managers.player.exception.*;
+import xyz.srnyx.limitedlives.services.player.LifeTransferService;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -49,6 +51,10 @@ public class LivesCmd extends AnnoyingCommand {
 
     @Override
     public void onCommand(@NotNull AnnoyingSender sender) {
+        if (!plugin.commands.isOwnedContext(sender)) {
+            plugin.commands.schedule(sender, () -> onCommand(sender));
+            return;
+        }
         // Check if commands enabled
         if (sender.isPlayer) {
             final World world = sender.getPlayer().getWorld();
@@ -149,12 +155,14 @@ public class LivesCmd extends AnnoyingCommand {
             if (!sender.checkPermission("limitedlives.get.other")) return;
             final List<OfflinePlayer> players = sender.getSelector(1, OfflinePlayer.class)
                     .orElseFlatSingle(BukkitUtility::getOfflinePlayer);
-            if (players != null) for (final OfflinePlayer player : players) {
-                new AnnoyingMessage(plugin, "get.other")
-                        .replace("%target%", player.getName())
-                        .replace("%lives%", new PlayerManager(plugin, player).getLives())
-                        .send(sender);
-            }
+            if (players != null) for (final OfflinePlayer player : players) executeForTarget(player, () -> {
+                final String targetName = player.getName();
+                final int targetLives = new PlayerManager(plugin, player).getLives();
+                plugin.feedback.deliver(sender, () -> new AnnoyingMessage(plugin, "get.other")
+                        .replace("%target%", targetName)
+                        .replace("%lives%", targetLives)
+                        .send(sender));
+            });
             return;
         }
 
@@ -238,74 +246,9 @@ public class LivesCmd extends AnnoyingCommand {
             final List<OfflinePlayer> selectorTargets = sender.getSelector(2, OfflinePlayer.class)
                     .orElseFlatSingle(BukkitUtility::getOfflinePlayer);
             if (selectorTargets == null) return;
-            final List<OfflinePlayer> targets = new ArrayList<>(selectorTargets);
-
-            // Remove player from targets if present, can't give lives to self
             final Player player = sender.getPlayer();
-            final UUID playerUuid = player.getUniqueId();
-            targets.removeIf(target -> target.getUniqueId().equals(playerUuid));
-
-            // No valid targets
-            if (targets.isEmpty()) {
-                new AnnoyingMessage(plugin, "give.self").send(sender);
-                return;
-            }
-            final PlayerManager playerManager = new PlayerManager(plugin, player);
-
-            // Check if player has +1 than min lives
-            final int playerLives = playerManager.getLives();
-            if (playerLives <= plugin.config.lives.min + 1) {
-                new AnnoyingMessage(plugin, "give.last-life").send(sender);
-                return;
-            }
-
-            // CLAMPING: Player doesn't have enough lives, give as many as possible
-            final int maxTotalToGive = playerLives - (plugin.config.lives.min + 1);
-            if (lives * targets.size() > maxTotalToGive) lives = maxTotalToGive / targets.size();
-            if (lives <= 0) {
-                new AnnoyingMessage(plugin, "give.last-life").send(sender);
-                return;
-            }
-
-            // Loop through targets and send lives
             final String playerName = player.getName();
-            for (final OfflinePlayer target : targets) {
-                // CLAMPING: Target can't receive that many lives, give as many as possible
-                final PlayerManager targetManager = new PlayerManager(plugin, target);
-                int targetLivesToGive = lives;
-                final int targetLives = targetManager.getLives();
-                if (targetLives + targetLivesToGive > targetManager.getMaxLives()) targetLivesToGive = targetManager.getMaxLives() - targetLives;
-                if (targetLivesToGive <= 0) continue;
-
-                // Take lives from player and give to target
-                final int newPlayerLives;
-                final int newTargetLives;
-                try {
-                    newPlayerLives = playerManager.removeLives(targetLivesToGive, null);
-                    newTargetLives = targetManager.addLives(targetLivesToGive);
-                } catch (final ActionException e) {
-                    // Shouldn't happen
-                    sender.invalidArguments();
-                    return;
-                }
-
-                // Send messages
-                final String targetName = target.getName();
-                new AnnoyingMessage(plugin, "give.player")
-                        .replace("%player%", playerName)
-                        .replace("%target%", targetName)
-                        .replace("%playerlives%", newPlayerLives)
-                        .replace("%targetlives%", newTargetLives)
-                        .replace("%amount%", targetLivesToGive)
-                        .send(sender);
-                if (target instanceof Player) new AnnoyingMessage(plugin, "give.target")
-                        .replace("%player%", playerName)
-                        .replace("%target%", targetName)
-                        .replace("%playerlives%", newPlayerLives)
-                        .replace("%targetlives%", newTargetLives)
-                        .replace("%amount%", targetLivesToGive)
-                        .send((Player) target);
-            }
+            plugin.lifeTransferService.transfer(player, selectorTargets, lives, outcome -> handleTransferOutcome(sender, playerName, outcome));
             return;
         }
 
@@ -316,63 +259,99 @@ public class LivesCmd extends AnnoyingCommand {
         // Get targets and loop through
         final List<OfflinePlayer> targets = sender.getSelector(2, OfflinePlayer.class)
                 .orElseFlatSingle(BukkitUtility::getOfflinePlayer);
-        if (targets != null) for (final OfflinePlayer target : targets) {
-            final String targetName = target.getName();
+        final int requestedAmount = lives;
+        if (targets != null) for (final OfflinePlayer target : targets) executeForTarget(target, () -> executeOtherAction(sender, action, requestedAmount, target));
+    }
 
-            // Get new lives after action
-            final int newLives;
-            int amount = lives;
-            final PlayerManager manager = new PlayerManager(plugin, target);
-            try {
-                switch (action) {
-                    // set <lives> <player>
-                    case "set":
-                        newLives = manager.setLives(amount);
-                        break;
-                    // add <lives> <player>
-                    case "add":
-                        newLives = manager.addLives(amount);
-                        break;
-                    // remove <lives> <player>
-                    case "remove":
-                        newLives = manager.removeLives(amount, null);
-                        break;
-                    // withdraw <lives> <player>
-                    case "withdraw":
-                        if (!sender.checkPlayer()) return;
-                        if (amount <= 0) {
-                            new AnnoyingMessage(plugin, "withdraw.negative").send(sender);
-                            return;
-                        }
-                        final int currentLives = manager.getLives();
-                        if (currentLives <= amount) amount = currentLives - 1; // Withdraw as many possible
-                        if (amount <= plugin.config.lives.min) throw new LessThanMinLives();
-                        newLives = manager.withdrawLives(sender.getPlayer(), amount);
-                        break;
-                    default:
-                        sender.invalidArgumentByIndex(0);
-                        return;
-                }
-            } catch (final ActionException e) {
-                new AnnoyingMessage(plugin, action + "." + e.getMessageKey())
-                        .replace("%amount%", amount)
-                        .replace("%target%", targetName)
-                        .replace("%min%", plugin.config.lives.min)
-                        .replace("%max%", manager.getMaxLives())
-                        .send(sender);
+    private void handleTransferOutcome(@NotNull AnnoyingSender sender, @NotNull String playerName, @NotNull LifeTransferService.Outcome outcome) {
+        switch (outcome.status()) {
+            case SELF_ONLY:
+                new AnnoyingMessage(plugin, "give.self").send(sender);
                 return;
-            }
-
-            // Send message
-            new AnnoyingMessage(plugin, action + ".other")
-                    .replace("%amount%", amount)
-                    .replace("%target%", targetName)
-                    .replace("%lives%", newLives)
+            case LAST_LIFE:
+                new AnnoyingMessage(plugin, "give.last-life").send(sender);
+                return;
+            case FAILED:
+                sender.invalidArguments();
+                return;
+            case SOURCE_RETIRED:
+                return;
+            case SUCCESS:
+                break;
+        }
+        for (final LifeTransferService.Transfer transfer : outcome.transfers()) {
+            new AnnoyingMessage(plugin, "give.player")
+                    .replace("%player%", playerName)
+                    .replace("%target%", transfer.targetName())
+                    .replace("%playerlives%", transfer.sourceLives())
+                    .replace("%targetlives%", transfer.targetLives())
+                    .replace("%amount%", transfer.amount())
                     .send(sender);
+            final Player target = Bukkit.getPlayer(transfer.targetUuid());
+            if (target != null) plugin.feedback.deliver(target, () -> new AnnoyingMessage(plugin, "give.target")
+                    .replace("%player%", playerName)
+                    .replace("%target%", transfer.targetName())
+                    .replace("%playerlives%", transfer.sourceLives())
+                    .replace("%targetlives%", transfer.targetLives())
+                    .replace("%amount%", transfer.amount())
+                    .send(target));
         }
     }
 
-    @NotNull private static final List<String> NO_ARGS = Arrays.asList("get", "set", "add", "remove", "give", "withdraw", "convert");
+    private void executeOtherAction(@NotNull AnnoyingSender sender, @NotNull String action, int requestedAmount, @NotNull OfflinePlayer target) {
+        final String targetName = target.getName();
+        final PlayerManager manager = new PlayerManager(plugin, target);
+        int amount = requestedAmount;
+        final int newLives;
+        org.bukkit.inventory.ItemStack withdrawItem = null;
+        try {
+            switch (action) {
+                case "set": newLives = manager.setLives(amount); break;
+                case "add": newLives = manager.addLives(amount); break;
+                case "remove": newLives = manager.removeLives(amount, null); break;
+                case "withdraw":
+                    if (!sender.isPlayer) return;
+                    if (amount <= 0) {
+                        plugin.feedback.deliver(sender, () -> new AnnoyingMessage(plugin, "withdraw.negative").send(sender));
+                        return;
+                    }
+                    final int currentLives = manager.getLives();
+                    if (currentLives <= amount) amount = currentLives - 1;
+                    if (amount <= plugin.config.lives.min) throw new LessThanMinLives();
+                    withdrawItem = manager.createWithdrawItem(amount);
+                    newLives = manager.withdrawLivesData(amount);
+                    break;
+                default: return;
+            }
+        } catch (final ActionException exception) {
+            final int failedAmount = amount;
+            final int maxLives = manager.getMaxLives();
+            plugin.feedback.deliver(sender, () -> new AnnoyingMessage(plugin, action + "." + exception.getMessageKey())
+                    .replace("%amount%", failedAmount)
+                    .replace("%target%", targetName)
+                    .replace("%min%", plugin.config.lives.min)
+                    .replace("%max%", maxLives)
+                    .send(sender));
+            return;
+        }
+
+        final int appliedAmount = amount;
+        final org.bukkit.inventory.ItemStack item = withdrawItem;
+        plugin.feedback.deliver(sender, () -> {
+            if (item != null) sender.getPlayer().getInventory().addItem(item);
+            new AnnoyingMessage(plugin, action + ".other")
+                    .replace("%amount%", appliedAmount)
+                    .replace("%target%", targetName)
+                    .replace("%lives%", newLives)
+                    .send(sender);
+        });
+    }
+
+    private void executeForTarget(@NotNull OfflinePlayer target, @NotNull Runnable action) {
+        final Player online = Bukkit.getPlayer(target.getUniqueId());
+        if (online == null) action.run();
+        else plugin.execution.runForEntityOrNow(online, action, () -> {});
+    }
 
     @Override @Nullable
     public Collection<String> onTabComplete(@NotNull AnnoyingSender sender) {
@@ -382,9 +361,20 @@ public class LivesCmd extends AnnoyingCommand {
         final String[] args = sender.args;
         final int length = args.length;
 
-        // No arguments
-        if (length == 1) return NO_ARGS;
         final CommandSender cmdSender = sender.cmdSender;
+
+        // No arguments: permission checks happen before constructing the visible list.
+        if (length == 1) {
+            final List<String> available = new ArrayList<>();
+            if ((sender.isPlayer && cmdSender.hasPermission("limitedlives.get.self")) || cmdSender.hasPermission("limitedlives.get.other")) available.add("get");
+            for (final String action : Arrays.asList("set", "add", "remove", "withdraw")) {
+                if ((action.equals("withdraw") && !sender.isPlayer)) continue;
+                if ((sender.isPlayer && cmdSender.hasPermission("limitedlives." + action + ".self")) || cmdSender.hasPermission("limitedlives." + action + ".other")) available.add(action);
+            }
+            if (sender.isPlayer && cmdSender.hasPermission("limitedlives.give")) available.add("give");
+            if (cmdSender.hasPermission("limitedlives.convert")) available.add("convert");
+            return available;
+        }
 
         if (length == 2) {
             // convert
@@ -394,12 +384,17 @@ public class LivesCmd extends AnnoyingCommand {
             }
             // get
             if (sender.argEquals(0, "get")) {
-                if (cmdSender.hasPermission("limitedlives.get.other")) return sender.withSelectorKeys(BukkitUtility.getOnlinePlayerNames(), OfflinePlayer.class);
-                if (cmdSender.hasPermission("limitedlives.get.self")) return Collections.singleton(cmdSender.getName());
+                if (cmdSender.hasPermission("limitedlives.get.other")) return sender.withSelectorKeys(plugin.onlinePlayers.names(), OfflinePlayer.class);
+                if (sender.isPlayer && cmdSender.hasPermission("limitedlives.get.self")) return Collections.singleton(cmdSender.getName());
                 return null;
             }
             // <action>
-            if (sender.argEquals(0, "set", "add", "remove", "withdraw", "give")) return Collections.singleton("[<lives>]");
+            if (sender.argEquals(0, "give")) return sender.isPlayer && cmdSender.hasPermission("limitedlives.give") ? Collections.singleton("[<lives>]") : null;
+            if (sender.argEquals(0, "set", "add", "remove", "withdraw")) {
+                final String action = args[0].toLowerCase(Locale.ROOT);
+                if (action.equals("withdraw") && !sender.isPlayer) return null;
+                return (sender.isPlayer && cmdSender.hasPermission("limitedlives." + action + ".self")) || cmdSender.hasPermission("limitedlives." + action + ".other") ? Collections.singleton("[<lives>]") : null;
+            }
             return null;
         }
 
@@ -407,8 +402,10 @@ public class LivesCmd extends AnnoyingCommand {
         if (length == 3) {
             final String actionLower = sender.getArgumentOptional(0).map(String::toLowerCase).orElse(null);
             if (actionLower == null || actionLower.equals("get")) return null;
-            if (cmdSender.hasPermission("limitedlives." + actionLower + ".other")) return sender.withSelectorKeys(BukkitUtility.getOnlinePlayerNames(), OfflinePlayer.class);
-            if (cmdSender.hasPermission("limitedlives." + actionLower + ".self")) return Collections.singleton(cmdSender.getName());
+            if (actionLower.equals("give")) return sender.isPlayer && cmdSender.hasPermission("limitedlives.give") ? sender.withSelectorKeys(plugin.onlinePlayers.names(), OfflinePlayer.class) : null;
+            if (actionLower.equals("withdraw") && !sender.isPlayer) return null;
+            if (cmdSender.hasPermission("limitedlives." + actionLower + ".other")) return sender.withSelectorKeys(plugin.onlinePlayers.names(), OfflinePlayer.class);
+            if (sender.isPlayer && cmdSender.hasPermission("limitedlives." + actionLower + ".self")) return Collections.singleton(cmdSender.getName());
         }
 
         return null;

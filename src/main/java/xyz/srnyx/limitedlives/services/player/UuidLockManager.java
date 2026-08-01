@@ -3,6 +3,8 @@ package xyz.srnyx.limitedlives.services.player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
@@ -32,6 +34,16 @@ public final class UuidLockManager {
                 return current.users == 0 ? null : current;
             });
         }
+    }
+
+    public <T, E extends Exception> T withLocksChecked(@NotNull Collection<UUID> uuids, @NotNull CheckedSupplier<T, E> operation) throws E {
+        final List<UUID> ordered = uuids.stream().distinct().sorted().toList();
+        return lockRecursively(ordered, 0, operation);
+    }
+
+    private <T, E extends Exception> T lockRecursively(List<UUID> ordered, int index, CheckedSupplier<T, E> operation) throws E {
+        if (index == ordered.size()) return operation.get();
+        return withLockChecked(ordered.get(index), () -> lockRecursively(ordered, index + 1, operation));
     }
 
     @FunctionalInterface

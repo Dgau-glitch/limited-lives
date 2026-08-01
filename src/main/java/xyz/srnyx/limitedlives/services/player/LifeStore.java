@@ -8,6 +8,7 @@ import xyz.srnyx.annoyingapi.data.StringData;
 import xyz.srnyx.limitedlives.LimitedLives;
 
 import java.util.UUID;
+import java.util.Collection;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
@@ -37,6 +38,14 @@ public final class LifeStore {
     public <T, E extends Exception> T atomicChecked(@NotNull UUID uuid, @NotNull CheckedSupplier<T, E> operation) throws E {
         requireOpen();
         return lockManager.withLockChecked(uuid, () -> {
+            requireOpen();
+            return operation.get();
+        });
+    }
+
+    public <T, E extends Exception> T atomicAllChecked(@NotNull Collection<UUID> uuids, @NotNull CheckedSupplier<T, E> operation) throws E {
+        requireOpen();
+        return lockManager.withLocksChecked(uuids, () -> {
             requireOpen();
             return operation.get();
         });

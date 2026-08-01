@@ -2,6 +2,7 @@ package xyz.srnyx.limitedlives.services.execution;
 
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.Location;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.jetbrains.annotations.NotNull;
 
@@ -41,6 +42,15 @@ public final class FoliaExecutionService {
         return track(task);
     }
 
+    public boolean runForEntityOrNow(@NotNull Entity entity, @NotNull Runnable action, @NotNull Runnable retired) {
+        if (!isRunning()) return false;
+        if (plugin.getServer().isOwnedByCurrentRegion(entity)) {
+            action.run();
+            return true;
+        }
+        return runForEntity(entity, action, retired);
+    }
+
     public boolean runForRegion(@NotNull Location location, @NotNull Runnable action) {
         if (!isRunning()) return false;
         final ScheduledTask task = plugin.getServer().getRegionScheduler().run(plugin, location, scheduled -> executeTracked(scheduled, action));
@@ -51,6 +61,15 @@ public final class FoliaExecutionService {
         if (!isRunning()) return false;
         final ScheduledTask task = plugin.getServer().getGlobalRegionScheduler().run(plugin, scheduled -> executeTracked(scheduled, action));
         return track(task);
+    }
+
+    public boolean runGlobalOrNow(@NotNull Runnable action) {
+        if (!isRunning()) return false;
+        if (Bukkit.isGlobalTickThread()) {
+            action.run();
+            return true;
+        }
+        return runGlobal(action);
     }
 
     public boolean runAsync(@NotNull Runnable action) {

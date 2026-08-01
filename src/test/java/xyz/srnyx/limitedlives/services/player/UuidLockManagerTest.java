@@ -47,4 +47,32 @@ class UuidLockManagerTest {
         assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
         assertEquals(workers * updatesPerWorker, value.get());
     }
+
+    @Test
+    void stableOrderingPreventsOppositeOrderDeadlock() throws Exception {
+        final UuidLockManager locks = new UuidLockManager();
+        final UUID first = UUID.randomUUID();
+        final UUID second = UUID.randomUUID();
+        final ExecutorService executor = Executors.newFixedThreadPool(2);
+        final CountDownLatch start = new CountDownLatch(1);
+        final AtomicInteger completed = new AtomicInteger();
+
+        final java.util.concurrent.Future<?> forward = executor.submit(() -> {
+            start.await();
+            locks.withLocksChecked(List.of(first, second), () -> completed.incrementAndGet());
+            return null;
+        });
+        final java.util.concurrent.Future<?> reverse = executor.submit(() -> {
+            start.await();
+            locks.withLocksChecked(List.of(second, first), () -> completed.incrementAndGet());
+            return null;
+        });
+
+        start.countDown();
+        forward.get(5, TimeUnit.SECONDS);
+        reverse.get(5, TimeUnit.SECONDS);
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        assertEquals(2, completed.get());
+    }
 }

@@ -19,6 +19,12 @@ import xyz.srnyx.limitedlives.managers.WorldGuardManager;
 import xyz.srnyx.limitedlives.managers.player.PlayerManager;
 import xyz.srnyx.limitedlives.services.execution.FoliaExecutionService;
 import xyz.srnyx.limitedlives.services.player.LifeStore;
+import xyz.srnyx.limitedlives.services.player.LifeItemUseService;
+import xyz.srnyx.limitedlives.services.player.OnlinePlayerDirectory;
+import xyz.srnyx.limitedlives.services.player.LifeTransferService;
+import xyz.srnyx.limitedlives.services.execution.CommandFeedbackService;
+import xyz.srnyx.limitedlives.services.execution.RecipeRegistrationService;
+import xyz.srnyx.limitedlives.services.execution.CommandExecutionService;
 
 import java.io.File;
 import java.util.logging.Level;
@@ -28,6 +34,12 @@ public class LimitedLives extends AnnoyingPlugin {
     public LimitedConfig config;
     @NotNull public final FoliaExecutionService execution = new FoliaExecutionService(this);
     @NotNull public final LifeStore lifeStore = new LifeStore(this);
+    @NotNull public final CommandFeedbackService feedback = new CommandFeedbackService(this);
+    @NotNull public final LifeItemUseService lifeItemUseService = new LifeItemUseService(this);
+    @NotNull public final OnlinePlayerDirectory onlinePlayers = new OnlinePlayerDirectory();
+    @NotNull public final LifeTransferService lifeTransferService = new LifeTransferService(this);
+    @NotNull public final RecipeRegistrationService recipes = new RecipeRegistrationService(this);
+    @NotNull public final CommandExecutionService commands = new CommandExecutionService(this);
     @NotNull public final PlayerItemConsumeListener playerItemConsumeListener = new PlayerItemConsumeListener(this);
     @NotNull public final PlayerInteractListener playerInteractListener = new PlayerInteractListener(this);
     @NotNull public final CraftListener craftListener = new CraftListener(this);
@@ -65,12 +77,8 @@ public class LimitedLives extends AnnoyingPlugin {
     @Override
     public void enable() {
         execution.start();
+        Bukkit.getOnlinePlayers().forEach(player -> execution.runForEntityOrNow(player, () -> onlinePlayers.joined(player), () -> {}));
         reload();
-        if (config.obtaining.crafting.recipe != null) try {
-            Bukkit.addRecipe(config.obtaining.crafting.recipe);
-        } catch (final Exception e) {
-            log(Level.WARNING, "&cFailed to add crafting recipe!", e);
-        }
     }
 
     @Override
@@ -85,6 +93,7 @@ public class LimitedLives extends AnnoyingPlugin {
     public void reload() {
         // Load config
         config = new LimitedConfig(this);
+        recipes.replace(config.obtaining.crafting.recipe);
         // Store WorldGuard RegionContainer (needs to happen on enable after WorldGuard enables)
         if (worldGuard != null) worldGuard.storeRegionContainer();
         // Detect very old data (data/data.yml, 2.0.1 and lower)

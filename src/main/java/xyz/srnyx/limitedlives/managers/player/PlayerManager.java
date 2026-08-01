@@ -31,13 +31,25 @@ public class PlayerManager {
     @NotNull public static final String ITEM_KEY = "ll_item";
 
     @NotNull private final LimitedLives plugin;
-    @NotNull private final OfflinePlayer offline;
     @NotNull private final UUID uuid;
+    @Nullable private final OfflinePlayer offline;
+    @Nullable private final Integer maxLivesSnapshot;
+    @NotNull private final String playerName;
 
     public PlayerManager(@NotNull LimitedLives plugin, @NotNull OfflinePlayer offline) {
         this.plugin = plugin;
         this.offline = offline;
         this.uuid = offline.getUniqueId();
+        this.playerName = offline.getName() == null ? uuid.toString() : offline.getName();
+        this.maxLivesSnapshot = null;
+    }
+
+    public PlayerManager(@NotNull LimitedLives plugin, @NotNull UUID uuid, @NotNull String playerName, int maxLivesSnapshot) {
+        this.plugin = plugin;
+        this.offline = null;
+        this.uuid = uuid;
+        this.playerName = playerName;
+        this.maxLivesSnapshot = maxLivesSnapshot;
     }
 
     public int getLives() {
@@ -49,13 +61,15 @@ public class PlayerManager {
         if (livesString != null) try {
             return Integer.parseInt(livesString);
         } catch (final NumberFormatException e) {
-            AnnoyingPlugin.log(Level.WARNING, "&cRemoving invalid lives from &4" + offline.getName() + "&c: &4" + livesString);
+            AnnoyingPlugin.log(Level.WARNING, "&cRemoving invalid lives from &4" + playerName + "&c: &4" + livesString);
             plugin.lifeStore.remove(uuid, LIVES_KEY);
         }
         return plugin.config.lives.def;
     }
 
     public int getMaxLives() {
+        if (maxLivesSnapshot != null) return maxLivesSnapshot;
+        if (offline == null) return plugin.config.lives.max;
         final Player online = offline.getPlayer();
         if (online == null) return plugin.config.lives.max;
         return BukkitUtility.getPermissionValue(online, "limitedlives.max.")
@@ -86,7 +100,7 @@ public class PlayerManager {
         try {
             graceLeft = LifeValuePolicy.graceLeft(Long.parseLong(graceStart), plugin.config.gracePeriod.duration.toMillis(), System.currentTimeMillis());
         } catch (final NumberFormatException e) {
-            AnnoyingPlugin.log(Level.WARNING, "&cRemoved invalid " + GRACE_START_KEY + " value for &4" + offline.getName() + "&c: &4" + graceStart, e);
+            AnnoyingPlugin.log(Level.WARNING, "&cRemoved invalid " + GRACE_START_KEY + " value for &4" + playerName + "&c: &4" + graceStart, e);
             plugin.lifeStore.remove(uuid, GRACE_START_KEY);
             return 0;
         }
@@ -109,7 +123,7 @@ public class PlayerManager {
             final int oldLives = getLivesUnlocked();
             plugin.lifeStore.set(uuid, LIVES_KEY, amount);
             if (LifeValuePolicy.shouldRevive(oldLives, amount, plugin.config.lives.min)) revive();
-            if (LifeValuePolicy.shouldKill(amount, plugin.config.lives.min)) kill(null);
+            if (LifeValuePolicy.shouldKill(amount, plugin.config.lives.min)) kill(null, null);
             return amount;
         });
     }
@@ -125,19 +139,33 @@ public class PlayerManager {
     }
 
     public int removeLives(int amount, @Nullable Player killer) throws LessThanMinLives {
+        return removeLives(amount, killer == null ? null : killer.getUniqueId(), killer == null ? null : killer.getName());
+    }
+
+    public int removeLives(int amount, @Nullable UUID killerUuid, @Nullable String killerName) throws LessThanMinLives {
         return plugin.lifeStore.atomicChecked(uuid, () -> {
             final int newLives = LifeValuePolicy.remove(getLivesUnlocked(), amount, plugin.config.lives.min);
             plugin.lifeStore.set(uuid, LIVES_KEY, newLives);
-            if (LifeValuePolicy.shouldKill(newLives, plugin.config.lives.min)) kill(killer);
+            if (LifeValuePolicy.shouldKill(newLives, plugin.config.lives.min)) kill(killerUuid, killerName);
             return newLives;
         });
     }
 
     public int withdrawLives(@NotNull Player sender, int amount) throws LessThanMinLives, RecipeNotSet {
-        if (plugin.config.obtaining.crafting.recipe == null) throw new RecipeNotSet();
-        final ItemStack item = plugin.config.obtaining.crafting.recipe.getResult();
-        item.setAmount(amount);
+        final ItemStack item = createWithdrawItem(amount);
         sender.getInventory().addItem(item);
+        return withdrawLivesData(amount);
+    }
+
+    @NotNull
+    public ItemStack createWithdrawItem(int amount) throws RecipeNotSet {
+        if (plugin.config.obtaining.crafting.recipe == null) throw new RecipeNotSet();
+        final ItemStack item = plugin.config.obtaining.crafting.recipe.getResult().clone();
+        item.setAmount(amount);
+        return item;
+    }
+
+    public int withdrawLivesData(int amount) throws LessThanMinLives {
         return removeLives(amount, null);
     }
 
@@ -149,21 +177,21 @@ public class PlayerManager {
         dispatchCommands(plugin.config.commands.revive, null);
     }
 
-    private void kill(@Nullable Player killer) {
-        plugin.lifeStore.set(uuid, DEAD_KEY, killer != null ? killer.getUniqueId().toString() : "null");
-        dispatchCommands(plugin.config.commands.punishment.death, killer);
+    private void kill(@Nullable UUID killerUuid, @Nullable String killerName) {
+        plugin.lifeStore.set(uuid, DEAD_KEY, killerUuid != null ? killerUuid.toString() : "null");
+        dispatchCommands(plugin.config.commands.punishment.death, killerName);
     }
 
-    public void dispatchCommands(@NotNull List<String> commands, @Nullable OfflinePlayer killer) {
-        plugin.execution.runGlobal(() -> {
-            for (String command : commands) {
-                if (command.contains("%killer%")) {
-                    if (killer == null) continue;
-                    command = command.replace("%killer%", killer.getName());
-                }
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command.replace("%player%", offline.getName()));
+    public void dispatchCommands(@NotNull List<String> commands, @Nullable String killerName) {
+        final List<String> prepared = new java.util.ArrayList<>();
+        for (String command : commands) {
+            if (command.contains("%killer%")) {
+                if (killerName == null) continue;
+                command = command.replace("%killer%", killerName);
             }
-        });
+            prepared.add(command.replace("%player%", playerName));
+        }
+        plugin.execution.runGlobal(() -> prepared.forEach(command -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command)));
     }
 
 }

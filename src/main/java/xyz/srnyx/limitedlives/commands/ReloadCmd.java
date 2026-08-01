@@ -33,7 +33,14 @@ public class ReloadCmd extends AnnoyingCommand {
 
     @Override
     public void onCommand(@NotNull AnnoyingSender sender) {
-        plugin.reloadPlugin();
-        new AnnoyingMessage(plugin, "reload").send(sender);
+        plugin.execution.runGlobalOrNow(() -> {
+            plugin.reloadPlugin();
+            plugin.feedback.deliver(sender, () -> new AnnoyingMessage(plugin, "reload").send(sender));
+        });
+    }
+
+    @Override
+    public java.util.Collection<String> onTabComplete(@NotNull AnnoyingSender sender) {
+        return java.util.Collections.emptyList();
     }
 }

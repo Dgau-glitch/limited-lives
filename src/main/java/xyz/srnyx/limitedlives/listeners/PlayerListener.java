@@ -1,7 +1,6 @@
 package xyz.srnyx.limitedlives.listeners;
 
 import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -11,6 +10,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -55,6 +55,8 @@ public class PlayerListener extends AnnoyingListener {
         // Get killer
         final Player killer = player.getKiller();
         final boolean isPvp = killer != null && killer != player;
+        final UUID killerUuid = isPvp ? killer.getUniqueId() : null;
+        final String killerName = isPvp ? killer.getName() : null;
 
         // Get death cause
         String cause = "PLAYER_ATTACK";
@@ -81,14 +83,14 @@ public class PlayerListener extends AnnoyingListener {
 
         // Remove life
         try {
-            final int newLives = manager.removeLives(1, killer);
+            final int newLives = manager.removeLives(1, killerUuid, killerName);
             if (newLives <= plugin.config.lives.min) {
                 // No more lives
                 new AnnoyingMessage(plugin, "lives.zero").send(player);
             } else if (isPvp) {
                 // Lose to player
                 new AnnoyingMessage(plugin, "lives.lose.player")
-                        .replace("%killer%", killer.getName())
+                        .replace("%killer%", killerName)
                         .replace("%lives%", newLives)
                         .send(player);
             } else {
@@ -106,12 +108,17 @@ public class PlayerListener extends AnnoyingListener {
         if (plugin.config.keepInventory.enabled && plugin.config.worldsBlacklist.isWorldEnabled(world, Feature.KEEP_INVENTORY)) plugin.config.keepInventory.actions.getAction(manager.getDeaths()).consumer.accept(event);
 
         // Give life to killer
-        if (plugin.config.obtaining.stealing && isPvp && plugin.config.worldsBlacklist.isWorldEnabled(world, Feature.OBTAINING_STEALING)) try {
-            new AnnoyingMessage(plugin, "lives.steal")
-                    .replace("%target%", player.getName())
-                    .replace("%lives%", new PlayerManager(plugin, killer).addLives(1))
-                    .send(killer);
-        } catch (final ActionException ignored) {}
+        if (plugin.config.obtaining.stealing && isPvp && plugin.config.worldsBlacklist.isWorldEnabled(world, Feature.OBTAINING_STEALING)) {
+            final String victimName = player.getName();
+            plugin.execution.runForEntityOrNow(killer, () -> {
+                try {
+                    new AnnoyingMessage(plugin, "lives.steal")
+                            .replace("%target%", victimName)
+                            .replace("%lives%", new PlayerManager(plugin, killer).addLives(1))
+                            .send(killer);
+                } catch (final ActionException ignored) {}
+            }, () -> {});
+        }
     }
 
     @EventHandler
@@ -123,14 +130,13 @@ public class PlayerListener extends AnnoyingListener {
         plugin.lifeStore.remove(uuid, PlayerManager.DEAD_KEY);
 
         // Get killer
-        OfflinePlayer killer = null;
+        String killerName = null;
         if (!killerString.equals("null")) try {
-            killer = Bukkit.getOfflinePlayer(UUID.fromString(killerString));
+            killerName = Bukkit.getOfflinePlayer(UUID.fromString(killerString)).getName();
         } catch (final IllegalArgumentException ignored) {}
-        final OfflinePlayer finalKiller = killer;
 
         // Run respawn commands
-        new PlayerManager(plugin, player).dispatchCommands(plugin.config.commands.punishment.respawn, finalKiller);
+        new PlayerManager(plugin, player).dispatchCommands(plugin.config.commands.punishment.respawn, killerName);
     }
 
     @EventHandler
@@ -144,6 +150,7 @@ public class PlayerListener extends AnnoyingListener {
     @EventHandler
     public void onPlayerJoin(@NotNull PlayerJoinEvent event) {
         final Player player = event.getPlayer();
+        plugin.onlinePlayers.joined(player);
         final EntityData data = new EntityData(plugin, player);
 
         // Convert old data
@@ -156,5 +163,10 @@ public class PlayerListener extends AnnoyingListener {
 
         // Start grace period
         if (plugin.config.gracePeriod.enabled && (plugin.config.gracePeriod.triggers.contains(GracePeriodTrigger.JOIN) || (plugin.config.gracePeriod.triggers.contains(GracePeriodTrigger.FIRST_JOIN) && !player.hasPlayedBefore()))) plugin.lifeStore.set(player.getUniqueId(), PlayerManager.GRACE_START_KEY, System.currentTimeMillis());
+    }
+
+    @EventHandler
+    public void onPlayerQuit(@NotNull PlayerQuitEvent event) {
+        plugin.onlinePlayers.quit(event.getPlayer());
     }
 }
