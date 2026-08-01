@@ -117,10 +117,10 @@ public class PlayerListener extends AnnoyingListener {
     @EventHandler
     public void onPlayerRespawn(@NotNull PlayerRespawnEvent event) {
         final Player player = event.getPlayer();
-        final EntityData data = new EntityData(plugin, player);
-        final String killerString = data.get(PlayerManager.DEAD_KEY);
+        final UUID uuid = player.getUniqueId();
+        final String killerString = plugin.lifeStore.get(uuid, PlayerManager.DEAD_KEY);
         if (killerString == null) return;
-        data.remove(PlayerManager.DEAD_KEY);
+        plugin.lifeStore.remove(uuid, PlayerManager.DEAD_KEY);
 
         // Get killer
         OfflinePlayer killer = null;
@@ -155,6 +155,6 @@ public class PlayerListener extends AnnoyingListener {
         }
 
         // Start grace period
-        if (plugin.config.gracePeriod.enabled && (plugin.config.gracePeriod.triggers.contains(GracePeriodTrigger.JOIN) || (plugin.config.gracePeriod.triggers.contains(GracePeriodTrigger.FIRST_JOIN) && !player.hasPlayedBefore()))) data.set(PlayerManager.GRACE_START_KEY, System.currentTimeMillis());
+        if (plugin.config.gracePeriod.enabled && (plugin.config.gracePeriod.triggers.contains(GracePeriodTrigger.JOIN) || (plugin.config.gracePeriod.triggers.contains(GracePeriodTrigger.FIRST_JOIN) && !player.hasPlayedBefore()))) plugin.lifeStore.set(player.getUniqueId(), PlayerManager.GRACE_START_KEY, System.currentTimeMillis());
     }
 }

@@ -17,6 +17,8 @@ import xyz.srnyx.limitedlives.listeners.PlayerListener;
 import xyz.srnyx.limitedlives.managers.PlaceholderManager;
 import xyz.srnyx.limitedlives.managers.WorldGuardManager;
 import xyz.srnyx.limitedlives.managers.player.PlayerManager;
+import xyz.srnyx.limitedlives.services.execution.FoliaExecutionService;
+import xyz.srnyx.limitedlives.services.player.LifeStore;
 
 import java.io.File;
 import java.util.logging.Level;
@@ -24,6 +26,8 @@ import java.util.logging.Level;
 
 public class LimitedLives extends AnnoyingPlugin {
     public LimitedConfig config;
+    @NotNull public final FoliaExecutionService execution = new FoliaExecutionService(this);
+    @NotNull public final LifeStore lifeStore = new LifeStore(this);
     @NotNull public final PlayerItemConsumeListener playerItemConsumeListener = new PlayerItemConsumeListener(this);
     @NotNull public final PlayerInteractListener playerInteractListener = new PlayerInteractListener(this);
     @NotNull public final CraftListener craftListener = new CraftListener(this);
@@ -38,6 +42,7 @@ public class LimitedLives extends AnnoyingPlugin {
                 .bStatsOptions(bStatsOptions -> bStatsOptions.id(18304))
                 .dataOptions(dataOptions -> dataOptions
                         .enabled(true)
+                        .useCacheDefault(false)
                         .entityDataColumns(
                                 PlayerManager.LIVES_KEY,
                                 PlayerManager.DEAD_KEY,
@@ -59,12 +64,21 @@ public class LimitedLives extends AnnoyingPlugin {
 
     @Override
     public void enable() {
+        execution.start();
         reload();
         if (config.obtaining.crafting.recipe != null) try {
             Bukkit.addRecipe(config.obtaining.crafting.recipe);
         } catch (final Exception e) {
             log(Level.WARNING, "&cFailed to add crafting recipe!", e);
         }
+    }
+
+    @Override
+    public void disable() {
+        // AnnoyingPlugin's final onDisable() synchronously flushes its cache and closes
+        // SQL before invoking this extension point. No work is submitted from here.
+        lifeStore.close();
+        execution.stop();
     }
 
     @Override

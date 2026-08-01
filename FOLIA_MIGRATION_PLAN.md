@@ -48,6 +48,8 @@ compileOnly("dev.folia:folia-api:1.21.11-R0.1-SNAPSHOT")
 
 ## Этапы реализации
 
+> Статус: этапы 1–3 реализованы. Сборочный снимок и аудит AnnoyingAPI сохранены в `docs/FOLIA_BASELINE.md`; следующие изменения начинаются с этапа 4.
+
 ### 1. Перевести build на Folia API 1.21.11 и зафиксировать baseline
 
 Заменить Spigot 1.8.8 API на указанную `compileOnly("dev.folia:folia-api:1.21.11-R0.1-SNAPSHOT")`, подключив официальный PaperMC Maven repository через существующий Gradle DSL либо обычный `repositories`. Установить совместимую Java toolchain (для Minecraft/Folia 1.21.x — Java 21), не затенять Folia API в итоговый JAR. Проверить разрешение `AnnoyingAPI`, PlaceholderAPI и WorldGuard и сохранить отчёт `dependencies` как baseline. До изменения Java-кода выполнить чистую компиляцию, чтобы получить полный перечень несовместимых/устаревших вызовов.

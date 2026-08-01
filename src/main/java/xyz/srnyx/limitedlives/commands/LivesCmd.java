@@ -16,8 +16,6 @@ import org.jetbrains.annotations.Nullable;
 import xyz.srnyx.annoyingapi.AnnoyingPlugin;
 import xyz.srnyx.annoyingapi.command.AnnoyingCommand;
 import xyz.srnyx.annoyingapi.command.AnnoyingSender;
-import xyz.srnyx.annoyingapi.data.EntityData;
-import xyz.srnyx.annoyingapi.data.StringData;
 import xyz.srnyx.annoyingapi.libs.javautilities.FileUtility;
 import xyz.srnyx.annoyingapi.libs.javautilities.manipulation.Mapper;
 import xyz.srnyx.annoyingapi.message.AnnoyingMessage;
@@ -120,7 +118,15 @@ public class LivesCmd extends AnnoyingCommand {
                 }
 
                 // Save lives to Limited Lives
-                if (!new StringData(plugin, EntityData.TABLE_NAME, uuidString).set(PlayerManager.LIVES_KEY, lives)) {
+                final UUID uuid;
+                try {
+                    uuid = UUID.fromString(uuidString);
+                } catch (final IllegalArgumentException exception) {
+                    AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", invalid UUID");
+                    failed++;
+                    continue;
+                }
+                if (!plugin.lifeStore.set(uuid, PlayerManager.LIVES_KEY, lives)) {
                     AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", failed to save");
                     failed++;
                     continue;
