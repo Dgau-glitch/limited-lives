@@ -19,11 +19,11 @@
 
 - `AnnoyingPlugin.onDisable()` объявлен `final`;
 - он синхронно вызывает `Dialect.saveCache()`, затем закрывает SQL connection и только после этого вызывает расширяемый `disable()`;
-- `StringData` при выключенном cache синхронно вызывает dialect database methods; LimitedLives устанавливает `useCacheDefault(false)`;
-- при явно включённом interval cache `DataManager.toggleIntervalCacheSaving()` использует внутренний Folia-aware scheduler AnnoyingAPI;
+- `StringData` при cache miss синхронно вызывает dialect database methods, поэтому `LifeStore` больше не вызывает `StringData` в рабочих путях: полная загрузка выполняется асинхронно при enable, а tick threads используют concurrent cache;
+- interval cache task AnnoyingAPI принудительно отключён; изменения накапливаются в памяти и сбрасываются единым lifecycle flush перед закрытием SQL;
 - собственный бизнес-код больше не использует `plugin.scheduler`; все новые scheduler submissions сосредоточены в `FoliaExecutionService`.
 
-Из-за `final onDisable()` точка расширения `disable()` вызывается после встроенного синхронного flush/close. Безопасность обеспечивается двумя инвариантами: JavaPlugin уже имеет `isEnabled() == false`, поэтому execution service отвергает новые задачи с самого начала server disable, а `disable()` только отменяет задачи и ничего не планирует. Собственные записи LimitedLives синхронны и по умолчанию не требуют отложенного flush; встроенный cache AnnoyingAPI, если администратор включил его отдельно, сохраняется самим final `onDisable()`.
+Из-за `final onDisable()` точка расширения `disable()` вызывается после встроенного синхронного flush/close. Безопасность обеспечивается двумя инвариантами: JavaPlugin уже имеет `isEnabled() == false`, поэтому execution service отвергает новые задачи с самого начала server disable, а `disable()` только отменяет задачи и ничего не планирует. Все игровые операции меняют только concurrent cache; AnnoyingAPI сохраняет его до закрытия SQL connection. Внешние PlaceholderAPI callbacks читают отдельные snapshots и не обращаются к закрытому backend-у.
 
 ## Зафиксированные предупреждения
 

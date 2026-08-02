@@ -93,60 +93,64 @@ public class LivesCmd extends AnnoyingCommand {
             // File: plugins/Hardcorelivesplugin/players/UUID.json
             // Structure: {"uuid":"e907083e-5db6-41fc-9e32-5c4d99a08712","username":"srnyx","lives":3,"bypassLives":false,"maxLives":5}
             // Converting: "uuid" and "lives"
-            int succeeded = 0;
-            int failed = 0;
-            final File playersFolder = new File(plugin.getDataFolder().getParentFile(), "Hardcorelivesplugin/players");
-            for (final String uuidString : FileUtility.getFileNames(playersFolder, "json")) {
-                // Parse file as JSON
-                final JsonObject json;
-                try {
-                    json = GSON.fromJson(new FileReader(new File(playersFolder, uuidString + ".json")), JsonObject.class);
-                } catch (final FileNotFoundException e) {
-                    AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", file not found", e);
-                    failed++;
-                    continue;
+            plugin.execution.runAsync(() -> {
+                int succeeded = 0;
+                int failed = 0;
+                final File playersFolder = new File(plugin.getDataFolder().getParentFile(), "Hardcorelivesplugin/players");
+                for (final String uuidString : FileUtility.getFileNames(playersFolder, "json")) {
+                    // Parse file as JSON
+                    final JsonObject json;
+                    try {
+                        json = GSON.fromJson(new FileReader(new File(playersFolder, uuidString + ".json")), JsonObject.class);
+                    } catch (final FileNotFoundException e) {
+                        AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", file not found", e);
+                        failed++;
+                        continue;
+                    }
+
+                    // Get lives
+                    final JsonElement livesElement = json.get("lives");
+                    if (livesElement == null) {
+                        AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", lives not found");
+                        failed++;
+                        continue;
+                    }
+                    final int lives;
+                    try {
+                        lives = livesElement.getAsInt();
+                    } catch (final ClassCastException e) {
+                        AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", lives not an integer", e);
+                        failed++;
+                        continue;
+                    }
+
+                    // Save lives to Limited Lives
+                    final UUID uuid;
+                    try {
+                        uuid = UUID.fromString(uuidString);
+                    } catch (final IllegalArgumentException exception) {
+                        AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", invalid UUID");
+                        failed++;
+                        continue;
+                    }
+                    if (!plugin.lifeStore.set(uuid, PlayerManager.LIVES_KEY, lives)) {
+                        AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", failed to save");
+                        failed++;
+                        continue;
+                    }
+
+                    AnnoyingPlugin.log(Level.INFO, "Converted Hardcore Lives Plugin data for " + uuidString + " with " + lives + " lives");
+                    succeeded++;
                 }
 
-                // Get lives
-                final JsonElement livesElement = json.get("lives");
-                if (livesElement == null) {
-                    AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", lives not found");
-                    failed++;
-                    continue;
-                }
-                final int lives;
-                try {
-                    lives = livesElement.getAsInt();
-                } catch (final ClassCastException e) {
-                    AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", lives not an integer", e);
-                    failed++;
-                    continue;
-                }
-
-                // Save lives to Limited Lives
-                final UUID uuid;
-                try {
-                    uuid = UUID.fromString(uuidString);
-                } catch (final IllegalArgumentException exception) {
-                    AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", invalid UUID");
-                    failed++;
-                    continue;
-                }
-                if (!plugin.lifeStore.set(uuid, PlayerManager.LIVES_KEY, lives)) {
-                    AnnoyingPlugin.log(Level.WARNING, "Failed to convert Hardcore Lives Plugin data for " + uuidString + ", failed to save");
-                    failed++;
-                    continue;
-                }
-
-                AnnoyingPlugin.log(Level.INFO, "Converted Hardcore Lives Plugin data for " + uuidString + " with " + lives + " lives");
-                succeeded++;
-            }
-
-            new AnnoyingMessage(plugin, "convert")
-                    .replace("%source%", "HardcoreLivesPlugin")
-                    .replace("%succeeded%", succeeded)
-                    .replace("%failed%", failed)
-                    .send(sender);
+                final int succeededResult = succeeded;
+                final int failedResult = failed;
+                plugin.feedback.deliver(sender, () -> new AnnoyingMessage(plugin, "convert")
+                        .replace("%source%", "HardcoreLivesPlugin")
+                        .replace("%succeeded%", succeededResult)
+                        .replace("%failed%", failedResult)
+                        .send(sender));
+            });
             return;
         }
 

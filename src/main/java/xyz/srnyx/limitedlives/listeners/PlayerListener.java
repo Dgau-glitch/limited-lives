@@ -152,19 +152,22 @@ public class PlayerListener extends AnnoyingListener {
     public void onPlayerJoin(@NotNull PlayerJoinEvent event) {
         final Player player = event.getPlayer();
         plugin.onlinePlayers.joined(player);
-        plugin.placeholders.capture(player);
         final EntityData data = new EntityData(plugin, player);
+        final String playerName = player.getName();
 
-        // Convert old data
-        final Map<String, String> failed = data.convertOldData(true, PlayerManager.LIVES_KEY, PlayerManager.DEAD_KEY);
-        if (failed == null) {
-            AnnoyingPlugin.log(Level.SEVERE, "Failed to convert old data for player " + player.getName());
-        } else if (!failed.isEmpty()) {
-            AnnoyingPlugin.log(Level.WARNING, "Failed to convert some old data for player " + player.getName() + ": " + failed);
-        }
+        // Legacy file/database conversion is blocking and must never run on the entity tick thread.
+        plugin.execution.runAsync(() -> {
+            final Map<String, String> failed = data.convertOldData(true, PlayerManager.LIVES_KEY, PlayerManager.DEAD_KEY);
+            if (failed == null) {
+                AnnoyingPlugin.log(Level.SEVERE, "Failed to convert old data for player " + playerName);
+            } else if (!failed.isEmpty()) {
+                AnnoyingPlugin.log(Level.WARNING, "Failed to convert some old data for player " + playerName + ": " + failed);
+            }
+        });
 
         // Start grace period
         if (plugin.config.gracePeriod.enabled && (plugin.config.gracePeriod.triggers.contains(GracePeriodTrigger.JOIN) || (plugin.config.gracePeriod.triggers.contains(GracePeriodTrigger.FIRST_JOIN) && !player.hasPlayedBefore()))) plugin.lifeStore.set(player.getUniqueId(), PlayerManager.GRACE_START_KEY, System.currentTimeMillis());
+        plugin.placeholders.capture(player);
     }
 
     @EventHandler

@@ -24,7 +24,11 @@ public final class PlaceholderSnapshotService {
 
     public void capture(@NotNull Player player) {
         final PlayerManager manager = new PlayerManager(plugin, player);
-        snapshots.put(player.getUniqueId(), new PlayerSnapshot(manager.getMaxLives(), player.hasPermission("limitedlives.bypass")));
+        snapshots.put(player.getUniqueId(), new PlayerSnapshot(
+                manager.getMaxLives(),
+                player.hasPermission("limitedlives.bypass"),
+                manager.getLives(),
+                manager.getGraceLeft()));
         identities.put(player, player.getUniqueId());
     }
 
@@ -38,7 +42,7 @@ public final class PlaceholderSnapshotService {
     @NotNull
     public PlayerSnapshot get(@NotNull UUID uuid) {
         final PlayerSnapshot snapshot = snapshots.get(uuid);
-        return snapshot != null ? snapshot : new PlayerSnapshot(plugin.config.lives.max, false);
+        return snapshot != null ? snapshot : new PlayerSnapshot(plugin.config.lives.max, false, plugin.config.lives.def, 0);
     }
 
     @Nullable
@@ -46,5 +50,9 @@ public final class PlaceholderSnapshotService {
         return player != null ? identities.get(player) : plugin.onlinePlayers.uuid(explicitName);
     }
 
-    public record PlayerSnapshot(int maxLives, boolean bypass) {}
+    public record PlayerSnapshot(int maxLives, boolean bypass, int lives, long graceLeft) {
+        public boolean graceActive() {
+            return graceLeft > 0;
+        }
+    }
 }

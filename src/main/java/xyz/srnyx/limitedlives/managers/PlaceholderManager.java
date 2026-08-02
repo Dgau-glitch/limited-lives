@@ -53,18 +53,16 @@ public class PlaceholderManager extends AnnoyingPAPIExpansion {
         final UUID uuid = plugin.placeholders.resolve(player, explicitName);
         if (uuid == null) return "N/A";
         final PlaceholderSnapshotService.PlayerSnapshot snapshot = plugin.placeholders.get(uuid);
-        final PlayerManager manager = new PlayerManager(plugin, uuid, explicitName.isEmpty() ? uuid.toString() : explicitName, snapshot.maxLives());
-
         // Player placeholders
         switch (identifier) {
             // lives
-            case "lives": return String.valueOf(manager.getLives());
+            case "lives": return String.valueOf(snapshot.lives());
             // max
             case "max": return String.valueOf(snapshot.maxLives());
             // grace-active
-            case "grace-active": return String.valueOf(manager.hasGrace());
+            case "grace-active": return String.valueOf(snapshot.graceActive());
             // grace-left
-            case "grace-left": return String.valueOf(manager.getGraceLeft());
+            case "grace-left": return String.valueOf(snapshot.graceLeft());
             // bypass
             case "bypass": return String.valueOf(snapshot.bypass());
         }

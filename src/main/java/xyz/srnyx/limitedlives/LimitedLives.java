@@ -64,7 +64,7 @@ public class LimitedLives extends AnnoyingPlugin {
                         PluginPlatform.spigot("109078"))))
                 .dataOptions(dataOptions -> dataOptions
                         .enabled(true)
-                        .useCacheDefault(false)
+                        .useCacheDefault(true)
                         .entityDataColumns(
                                 PlayerManager.LIVES_KEY,
                                 PlayerManager.DEAD_KEY,
@@ -91,11 +91,9 @@ public class LimitedLives extends AnnoyingPlugin {
         MiscUtility.IO_SCHEDULER.isShutdown();
         execution.start();
         disableIntervalCacheTask();
-        Bukkit.getOnlinePlayers().forEach(player -> execution.runForEntityOrNow(player, () -> {
-            onlinePlayers.joined(player);
-            placeholders.capture(player);
-        }, () -> {}));
         reload();
+        Bukkit.getOnlinePlayers().forEach(onlinePlayers::joined);
+        lifeStore.start();
     }
 
     @Override
