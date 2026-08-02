@@ -27,6 +27,10 @@ import xyz.srnyx.limitedlives.managers.player.PlayerManager;
 import xyz.srnyx.limitedlives.managers.player.exception.ActionException;
 import xyz.srnyx.limitedlives.managers.player.exception.LessThanMinLives;
 import xyz.srnyx.limitedlives.services.player.LifeLossPolicy;
+import xyz.srnyx.limitedlives.api.LifeLossContext;
+import xyz.srnyx.limitedlives.api.event.PlayerLifeLossAttemptEvent;
+import xyz.srnyx.limitedlives.api.event.PlayerLifeLostEvent;
+import xyz.srnyx.limitedlives.api.event.PlayerStoleLifeEvent;
 
 import java.util.Map;
 import java.util.UUID;
@@ -68,6 +72,8 @@ public class PlayerListener extends AnnoyingListener {
 
         // Check PvP toggle and death cause before entering the life-loss flow.
         if (!LifeLossPolicy.shouldLoseLife(isPvp, plugin.config.lives.loseOnPlayerKill, cause, plugin.config.deathCauses)) return;
+        // Public API protection is UUID-only and safe in every Folia context.
+        if (!plugin.getApi().isLifeLossEnabled(player.getUniqueId())) return;
         // Check WorldGuard regions
         if (plugin.worldGuard != null && !plugin.worldGuard.test(player, player.getLocation())) return;
         // Check grace
@@ -82,9 +88,20 @@ public class PlayerListener extends AnnoyingListener {
             }
         }
 
+        final LifeLossContext lossContext = new LifeLossContext(
+                player.getUniqueId(), player.getName(), cause, isPvp,
+                killerUuid, killerName, System.currentTimeMillis());
+        final PlayerLifeLossAttemptEvent attemptEvent = new PlayerLifeLossAttemptEvent(player, lossContext);
+        Bukkit.getPluginManager().callEvent(attemptEvent);
+        if (attemptEvent.isCancelled()) return;
+
         // Remove life
         try {
             final int newLives = manager.removeLives(1, killerUuid, killerName);
+            Bukkit.getPluginManager().callEvent(new PlayerLifeLostEvent(player, lossContext, newLives + 1, newLives));
+            if (isPvp) plugin.execution.runForEntityOrNow(killer,
+                    () -> Bukkit.getPluginManager().callEvent(new PlayerStoleLifeEvent(killer, lossContext, newLives + 1, newLives)),
+                    () -> {});
             if (newLives <= plugin.config.lives.min) {
                 // No more lives
                 new AnnoyingMessage(plugin, "lives.zero").send(player);

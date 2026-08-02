@@ -19,6 +19,26 @@ Use the checked-in wrapper rather than an IDE-bundled or system Gradle:
 
 The wrapper uses checksum-verified Gradle 8.14.3 and the build selects a Java 21 toolchain. In IntelliJ IDEA, set **Gradle distribution** to `Wrapper` and **Gradle JVM** to Java 21. This prevents IDE/Gradle worker bootstrap mismatches and keeps local and CI builds identical.
 
+## Integration API
+
+Add the LimitedLives JAR as a `compileOnly` dependency and `LimitedLives` as a `softdepend`. Resolve the API through Bukkit's `ServicesManager`:
+
+```java
+LimitedLivesApi api = Bukkit.getServicesManager().load(LimitedLivesApi.class);
+```
+
+For a simple toggle use `disableLifeLoss(uuid)` / `enableLifeLoss(uuid)`. For production integrations prefer a scoped handle, because multiple plugins can protect the same player safely:
+
+```java
+LifeLossProtection protection = api.protect(playerId, morphPlugin, "hostile-morph");
+// Store the handle with the morph session.
+protection.close(); // when the player becomes human
+```
+
+`PlayerLifeLossAttemptEvent` is cancellable and runs in the victim's owning entity context immediately before mutation. `PlayerLifeLostEvent` fires there only after a life was actually removed. For PvP integrations, `PlayerStoleLifeEvent` is then delivered in the killer's owning entity context, so a morph plugin can safely count two successful life steals and transform `event.getKiller()` back without cross-region access. Its immutable context identifies the victim without exposing the victim entity.
+
+See [`docs/INTEGRATION_API.md`](docs/INTEGRATION_API.md) for lifecycle, cancellation and hostile-morph examples.
+
 Every player has a limited amount of lives. When a player loses all of their lives, they are punished (according to the config). Almost everything is configurable. *Originally made for [Mickaboo](https://youtube.com/@Mickabo)*
 
 **🐛 Bugs / 💡 Suggestions:** Please [open an issue](https://github.com/srnyx/limited-lives/issues/new/choose) to report a bug or suggest an idea

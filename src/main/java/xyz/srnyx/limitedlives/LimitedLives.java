@@ -27,10 +27,14 @@ import xyz.srnyx.limitedlives.services.execution.RecipeRegistrationService;
 import xyz.srnyx.limitedlives.services.execution.CommandExecutionService;
 import xyz.srnyx.limitedlives.services.execution.GameRuleService;
 import xyz.srnyx.limitedlives.services.player.PlaceholderSnapshotService;
+import xyz.srnyx.limitedlives.api.LimitedLivesApi;
+import xyz.srnyx.limitedlives.api.internal.DefaultLimitedLivesApi;
 import xyz.srnyx.annoyingapi.libs.javautilities.MiscUtility;
 
 import java.io.File;
 import java.util.logging.Level;
+import org.bukkit.event.HandlerList;
+import org.bukkit.plugin.ServicePriority;
 
 
 public class LimitedLives extends AnnoyingPlugin {
@@ -45,6 +49,7 @@ public class LimitedLives extends AnnoyingPlugin {
     @NotNull public final CommandExecutionService commands = new CommandExecutionService(this);
     @NotNull public final GameRuleService gameRules = new GameRuleService(this);
     @NotNull public final PlaceholderSnapshotService placeholders = new PlaceholderSnapshotService(this);
+    @NotNull private final DefaultLimitedLivesApi publicApi = new DefaultLimitedLivesApi();
     @NotNull public final PlayerItemConsumeListener playerItemConsumeListener = new PlayerItemConsumeListener(this);
     @NotNull public final PlayerInteractListener playerInteractListener = new PlayerInteractListener(this);
     @NotNull public final CraftListener craftListener = new CraftListener(this);
@@ -90,6 +95,8 @@ public class LimitedLives extends AnnoyingPlugin {
         MiscUtility.CPU_SCHEDULER.isShutdown();
         MiscUtility.IO_SCHEDULER.isShutdown();
         execution.start();
+        Bukkit.getServicesManager().register(LimitedLivesApi.class, publicApi, this, ServicePriority.Normal);
+        Bukkit.getPluginManager().registerEvents(publicApi, this);
         disableIntervalCacheTask();
         reload();
         Bukkit.getOnlinePlayers().forEach(onlinePlayers::joined);
@@ -102,6 +109,9 @@ public class LimitedLives extends AnnoyingPlugin {
         // SQL before invoking this extension point. No work is submitted from here.
         execution.stop();
         lifeStore.close();
+        Bukkit.getServicesManager().unregister(LimitedLivesApi.class, publicApi);
+        HandlerList.unregisterAll(publicApi);
+        publicApi.close();
         MiscUtility.CPU_SCHEDULER.shutdownNow();
         MiscUtility.IO_SCHEDULER.shutdownNow();
     }
@@ -132,5 +142,10 @@ public class LimitedLives extends AnnoyingPlugin {
         if (dataManager == null || dataManager.cacheSavingTask == null) return;
         dataManager.cacheSavingTask.cancel();
         dataManager.cacheSavingTask = null;
+    }
+
+    @NotNull
+    public LimitedLivesApi getApi() {
+        return publicApi;
     }
 }
