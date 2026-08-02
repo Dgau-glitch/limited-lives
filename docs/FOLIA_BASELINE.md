@@ -21,6 +21,7 @@
 - он синхронно вызывает `Dialect.saveCache()`, затем закрывает SQL connection и только после этого вызывает расширяемый `disable()`;
 - `StringData` при cache miss синхронно вызывает dialect database methods, поэтому `LifeStore` больше не вызывает `StringData` в рабочих путях: полная загрузка выполняется асинхронно при enable, а tick threads используют concurrent cache;
 - interval cache task AnnoyingAPI принудительно отключён; изменения накапливаются в памяти и сбрасываются единым lifecycle flush перед закрытием SQL;
+- каждое изменение дополнительно попадает в атомарный fsync-backed write-ahead snapshot на отдельном executor-е; snapshot переигрывается поверх базы при старте и защищает от crash/final-flush failure;
 - собственный бизнес-код больше не использует `plugin.scheduler`; все новые scheduler submissions сосредоточены в `FoliaExecutionService`.
 
 Из-за `final onDisable()` точка расширения `disable()` вызывается после встроенного синхронного flush/close. Безопасность обеспечивается двумя инвариантами: JavaPlugin уже имеет `isEnabled() == false`, поэтому execution service отвергает новые задачи с самого начала server disable, а `disable()` только отменяет задачи и ничего не планирует. Все игровые операции меняют только concurrent cache; AnnoyingAPI сохраняет его до закрытия SQL connection. Внешние PlaceholderAPI callbacks читают отдельные snapshots и не обращаются к закрытому backend-у.

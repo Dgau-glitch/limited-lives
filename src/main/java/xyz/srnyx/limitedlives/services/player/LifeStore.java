@@ -13,6 +13,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.io.IOException;
+import java.util.logging.Level;
 
 /** UUID-only persistence boundary. It never accesses Bukkit players, entities or worlds. */
 public final class LifeStore {
@@ -20,6 +22,7 @@ public final class LifeStore {
     @NotNull private final UuidLockManager lockManager;
     @NotNull private final AtomicBoolean acceptingOperations = new AtomicBoolean(true);
     @NotNull private final Set<CacheKey> dirty = ConcurrentHashMap.newKeySet();
+    @NotNull private final LifeJournal journal;
 
     public LifeStore(@NotNull LimitedLives plugin) {
         this(plugin, new UuidLockManager());
@@ -28,10 +31,13 @@ public final class LifeStore {
     LifeStore(@NotNull LimitedLives plugin, @NotNull UuidLockManager lockManager) {
         this.plugin = plugin;
         this.lockManager = lockManager;
+        this.journal = new LifeJournal(plugin.getDataFolder().toPath().resolve("data/lives-journal.properties"),
+                () -> plugin.config.persistence.journalFlushDelayMillis, plugin.getLogger());
     }
 
     /** Loads the complete persistence snapshot away from every Folia tick thread. */
     public void start() {
+        journal.start();
         plugin.execution.runAsync(() -> {
             if (!acceptingOperations.get() || plugin.dataManager == null) return;
             plugin.dataManager.dialect.getMigrationDataFromDatabase(plugin.dataManager).ifPresent(migration -> {
@@ -43,6 +49,20 @@ public final class LifeStore {
                     }
                 }));
             });
+            try {
+                journal.load();
+                journal.snapshot().forEach((key, mutation) -> {
+                    final CacheKey cacheKey = new CacheKey(key.uuid().toString(), key.key());
+                    dirty.add(cacheKey);
+                    if (mutation.removed()) {
+                        plugin.dataManager.dialect.markRemovedInCache(table(), cacheKey.target(), cacheKey.key());
+                    } else {
+                        plugin.dataManager.dialect.setToCache(table(), cacheKey.target(), cacheKey.key(), new Value(mutation.value()));
+                    }
+                });
+            } catch (final IOException exception) {
+                plugin.getLogger().log(Level.SEVERE, "Failed to load the life crash-recovery journal", exception);
+            }
             plugin.execution.runGlobal(() -> plugin.getServer().getOnlinePlayers().forEach(player ->
                     plugin.execution.runForEntityOrNow(player, () -> plugin.placeholders.capture(player), () -> {})));
         });
@@ -83,6 +103,7 @@ public final class LifeStore {
         requireOpen();
         dirty.add(new CacheKey(uuid.toString(), key));
         plugin.dataManager.dialect.setToCache(table(), uuid.toString(), key, new Value(String.valueOf(value)));
+        journal.set(uuid, key, String.valueOf(value));
         return true;
     }
 
@@ -90,12 +111,14 @@ public final class LifeStore {
         requireOpen();
         dirty.add(new CacheKey(uuid.toString(), key));
         plugin.dataManager.dialect.markRemovedInCache(table(), uuid.toString(), key);
+        journal.remove(uuid, key);
         return true;
     }
 
     /** Stops new operations. AnnoyingPlugin has already synchronously flushed at this extension point. */
     public void close() {
         acceptingOperations.set(false);
+        journal.close();
     }
 
     private void requireOpen() {

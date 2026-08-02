@@ -28,6 +28,15 @@ death-causes: []
 
 
 
+# Crash-recovery persistence. Every life mutation is written to an atomic,
+# fsync-backed journal outside Folia tick threads and replayed after a crash.
+persistence:
+  # Groups rapid mutations into one disk sync. Lower values reduce the maximum
+  # crash-loss window; higher values reduce disk writes.
+  journal-flush-delay-ms: 50
+
+
+
 # A list of worlds where the plugin won't be enabled
 worlds-blacklist:
   list:

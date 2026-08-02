@@ -30,6 +30,7 @@ public final class LimitedConfig {
     @NotNull public final Commands commands;
     @NotNull public final Obtaining obtaining;
     @NotNull public final WorldsBlacklist worldsBlacklist;
+    @NotNull public final Persistence persistence;
 
     public LimitedConfig(@NotNull LimitedLives plugin) {
         config = new AnnoyingResource(plugin, "config.yml");
@@ -40,6 +41,7 @@ public final class LimitedConfig {
         commands = new Commands();
         obtaining = new Obtaining();
         worldsBlacklist = new WorldsBlacklist();
+        persistence = new Persistence();
     }
 
     @NotNull
@@ -54,6 +56,10 @@ public final class LimitedConfig {
         public final int max = config.getInt("lives.max", 10);
         public final int min = config.getInt("lives.min", 0);
         public final boolean loseOnPlayerKill = config.getBoolean("lives.lose-on-player-kill", true);
+    }
+
+    public class Persistence {
+        public final long journalFlushDelayMillis = Math.max(0, config.getLong("persistence.journal-flush-delay-ms", 50));
     }
 
     public class KeepInventory {
