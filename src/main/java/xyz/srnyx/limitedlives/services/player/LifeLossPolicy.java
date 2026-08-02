@@ -10,8 +10,9 @@ public final class LifeLossPolicy {
     private LifeLossPolicy() {}
 
     public static boolean shouldLoseLife(boolean playerKill, boolean loseOnPlayerKill,
+                                         boolean playerKillAllowed,
                                          @Nullable String cause, @NotNull Set<String> enabledCauses) {
-        if (playerKill && !loseOnPlayerKill) return false;
+        if (playerKill && !loseOnPlayerKill && !playerKillAllowed) return false;
         return cause == null || enabledCauses.isEmpty() || enabledCauses.contains(cause);
     }
 }

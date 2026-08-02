@@ -16,6 +16,8 @@ lives:
   # Whether a victim loses a life when killed by another player (PvP).
   # This only controls the victim's life loss. If false, the kill is ignored by
   # LimitedLives, so the killer cannot gain a life through obtaining.stealing.
+  # Integrations may allow selected killers through the scoped public API; all
+  # victim protection, WorldGuard, grace and death-cause checks remain active.
   lose-on-player-kill: true
 
 

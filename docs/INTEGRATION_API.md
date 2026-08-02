@@ -34,6 +34,20 @@ api.addLivesAsync(playerId, reward, LifeOverflowPolicy.CLAMP)
 
 The returned stage does not grant ownership of a Bukkit entity. Route any subsequent player message or inventory/world change through that player's `EntityScheduler`.
 
+## Allowing selected PvP killers
+
+When `lives.lose-on-player-kill` is disabled globally, an integration can opt a selected killer into the normal PvP life-loss flow. Use the scoped handle while the player is in the relevant state:
+
+```java
+PlayerKillLifeLossAllowance allowance =
+        api.allowPlayerKillLifeLoss(morphedPlayerId, morphPlugin, "hostile-morph");
+
+// When the morph ends:
+allowance.close();
+```
+
+Allowances are reference-safe and are automatically revoked when their owner plugin disables. They bypass **only** the global `lose-on-player-kill` toggle. Victim life-loss protection, permissions, world rules, WorldGuard, grace, configured death causes and `PlayerLifeLossAttemptEvent` cancellation remain authoritative. Consequently, `PlayerStoleLifeEvent` is emitted only when the selected killer's victim actually lost a life.
+
 ## Protecting a morphed player
 
 The simple toggle is available for integrations that exclusively own the state:

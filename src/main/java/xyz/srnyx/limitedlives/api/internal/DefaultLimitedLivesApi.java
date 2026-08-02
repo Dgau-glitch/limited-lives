@@ -10,6 +10,7 @@ import xyz.srnyx.limitedlives.api.LifeLossProtection;
 import xyz.srnyx.limitedlives.api.LimitedLivesApi;
 import xyz.srnyx.limitedlives.api.LifeMutationResult;
 import xyz.srnyx.limitedlives.api.LifeOverflowPolicy;
+import xyz.srnyx.limitedlives.api.PlayerKillLifeLossAllowance;
 import xyz.srnyx.limitedlives.LimitedLives;
 import xyz.srnyx.limitedlives.config.GracePeriodTrigger;
 import xyz.srnyx.limitedlives.config.LimitedConfig;
@@ -17,6 +18,7 @@ import xyz.srnyx.limitedlives.managers.player.PlayerManager;
 
 import java.util.Set;
 import java.util.UUID;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CompletionStage;
@@ -25,6 +27,7 @@ public final class DefaultLimitedLivesApi implements LimitedLivesApi, Listener {
     @Nullable private final LimitedLives plugin;
     @NotNull private final Set<UUID> manuallyDisabled = ConcurrentHashMap.newKeySet();
     @NotNull private final ConcurrentHashMap<UUID, Set<Protection>> protections = new ConcurrentHashMap<>();
+    @NotNull private final ConcurrentHashMap<UUID, Set<KillAllowance>> killAllowances = new ConcurrentHashMap<>();
 
     public DefaultLimitedLivesApi(@NotNull LimitedLives plugin) {
         this.plugin = plugin;
@@ -117,40 +120,88 @@ public final class DefaultLimitedLivesApi implements LimitedLivesApi, Listener {
                 .forEach(Protection::close));
     }
 
+    @Override @NotNull
+    public PlayerKillLifeLossAllowance allowPlayerKillLifeLoss(@NotNull UUID killerId,
+                                                               @NotNull Plugin owner,
+                                                               @NotNull String reason) {
+        final KillAllowance allowance = new KillAllowance(killerId, owner, reason);
+        killAllowances.computeIfAbsent(killerId, ignored -> ConcurrentHashMap.newKeySet()).add(allowance);
+        return allowance;
+    }
+
+    @Override
+    public boolean isPlayerKillLifeLossAllowed(@NotNull UUID killerId) {
+        return killAllowances.containsKey(killerId);
+    }
+
+    @Override
+    public void clearPlayerKillLifeLossAllowances(@NotNull Plugin owner) {
+        killAllowances.values().forEach(values -> values.stream()
+                .filter(allowance -> allowance.owner().equals(owner))
+                .forEach(KillAllowance::close));
+    }
+
     public void close() {
         manuallyDisabled.clear();
         protections.values().forEach(values -> values.forEach(Protection::close));
         protections.clear();
+        killAllowances.values().forEach(values -> values.forEach(KillAllowance::close));
+        killAllowances.clear();
     }
 
     @EventHandler
     public void onPluginDisable(@NotNull PluginDisableEvent event) {
         clearProtections(event.getPlugin());
+        clearPlayerKillLifeLossAllowances(event.getPlugin());
     }
 
-    private final class Protection implements LifeLossProtection {
-        @NotNull private final UUID playerId;
-        @NotNull private final Plugin owner;
-        @NotNull private final String reason;
-        @NotNull private final AtomicBoolean active = new AtomicBoolean(true);
-
+    private final class Protection extends ScopedHandle implements LifeLossProtection {
         private Protection(@NotNull UUID playerId, @NotNull Plugin owner, @NotNull String reason) {
-            this.playerId = playerId;
-            this.owner = owner;
-            this.reason = reason;
+            super(playerId, owner, reason);
         }
 
-        @Override @NotNull public UUID playerId() { return playerId; }
-        @Override @NotNull public Plugin owner() { return owner; }
-        @Override @NotNull public String reason() { return reason; }
-        @Override public boolean isActive() { return active.get(); }
-        @Override
-        public void close() {
-            if (!active.compareAndSet(true, false)) return;
-            protections.computeIfPresent(playerId, (ignored, values) -> {
+        @Override @NotNull public UUID playerId() { return subjectId(); }
+        @Override protected void remove() {
+            protections.computeIfPresent(subjectId(), (ignored, values) -> {
                 values.remove(this);
                 return values.isEmpty() ? null : values;
             });
         }
+    }
+
+    private final class KillAllowance extends ScopedHandle implements PlayerKillLifeLossAllowance {
+        private KillAllowance(@NotNull UUID killerId, @NotNull Plugin owner, @NotNull String reason) {
+            super(killerId, owner, reason);
+        }
+
+        @Override @NotNull public UUID killerId() { return subjectId(); }
+        @Override protected void remove() {
+            killAllowances.computeIfPresent(subjectId(), (ignored, values) -> {
+                values.remove(this);
+                return values.isEmpty() ? null : values;
+            });
+        }
+    }
+
+    private abstract static class ScopedHandle implements AutoCloseable {
+        @NotNull private final UUID subjectId;
+        @NotNull private final Plugin owner;
+        @NotNull private final String reason;
+        @NotNull private final AtomicBoolean active = new AtomicBoolean(true);
+
+        private ScopedHandle(@NotNull UUID subjectId, @NotNull Plugin owner, @NotNull String reason) {
+            this.subjectId = Objects.requireNonNull(subjectId, "subjectId");
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.reason = Objects.requireNonNull(reason, "reason");
+        }
+
+        @NotNull protected final UUID subjectId() { return subjectId; }
+        @NotNull public final Plugin owner() { return owner; }
+        @NotNull public final String reason() { return reason; }
+        public final boolean isActive() { return active.get(); }
+        @Override public final void close() {
+            if (active.compareAndSet(true, false)) remove();
+        }
+        protected abstract void remove();
     }
 }

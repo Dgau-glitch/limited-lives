@@ -10,20 +10,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LifeLossPolicyTest {
     @Test
     void playerKillCanBeDisabledIndependently() {
-        assertFalse(LifeLossPolicy.shouldLoseLife(true, false, "PLAYER_ATTACK", Set.of()));
-        assertTrue(LifeLossPolicy.shouldLoseLife(true, true, "PLAYER_ATTACK", Set.of()));
+        assertFalse(LifeLossPolicy.shouldLoseLife(true, false, false, "PLAYER_ATTACK", Set.of()));
+        assertTrue(LifeLossPolicy.shouldLoseLife(true, true, false, "PLAYER_ATTACK", Set.of()));
+        assertTrue(LifeLossPolicy.shouldLoseLife(true, false, true, "PLAYER_ATTACK", Set.of()));
     }
 
     @Test
     void configuredCausesStillFilterPveAndPvpDeaths() {
         final Set<String> causes = Set.of("FALL", "PLAYER_ATTACK");
-        assertTrue(LifeLossPolicy.shouldLoseLife(false, true, "FALL", causes));
-        assertTrue(LifeLossPolicy.shouldLoseLife(true, true, "PLAYER_ATTACK", causes));
-        assertFalse(LifeLossPolicy.shouldLoseLife(false, true, "LAVA", causes));
+        assertTrue(LifeLossPolicy.shouldLoseLife(false, true, false, "FALL", causes));
+        assertTrue(LifeLossPolicy.shouldLoseLife(true, true, false, "PLAYER_ATTACK", causes));
+        assertFalse(LifeLossPolicy.shouldLoseLife(false, true, false, "LAVA", causes));
     }
 
     @Test
     void unknownCausePreservesExistingLifeLossBehavior() {
-        assertTrue(LifeLossPolicy.shouldLoseLife(false, true, null, Set.of("FALL")));
+        assertTrue(LifeLossPolicy.shouldLoseLife(false, true, false, null, Set.of("FALL")));
     }
 }

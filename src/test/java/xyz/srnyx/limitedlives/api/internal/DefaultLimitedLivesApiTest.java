@@ -3,6 +3,7 @@ package xyz.srnyx.limitedlives.api.internal;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
 import xyz.srnyx.limitedlives.api.LifeLossProtection;
+import xyz.srnyx.limitedlives.api.PlayerKillLifeLossAllowance;
 
 import java.lang.reflect.Proxy;
 import java.util.UUID;
@@ -41,6 +42,24 @@ class DefaultLimitedLivesApiTest {
         assertFalse(api.isLifeLossEnabled(playerId));
         remaining.close();
         assertTrue(api.isLifeLossEnabled(playerId));
+    }
+
+    @Test
+    void playerKillAllowancesAreScopedAndReferenceSafe() {
+        final DefaultLimitedLivesApi api = new DefaultLimitedLivesApi();
+        final UUID killerId = UUID.randomUUID();
+        final Plugin first = pluginProxy("First");
+        final Plugin second = pluginProxy("Second");
+        final PlayerKillLifeLossAllowance firstHandle =
+                api.allowPlayerKillLifeLoss(killerId, first, "morph");
+        final PlayerKillLifeLossAllowance secondHandle =
+                api.allowPlayerKillLifeLoss(killerId, second, "quest");
+
+        firstHandle.close();
+        assertTrue(api.isPlayerKillLifeLossAllowed(killerId));
+        api.clearPlayerKillLifeLossAllowances(second);
+        assertFalse(api.isPlayerKillLifeLossAllowed(killerId));
+        secondHandle.close();
     }
 
     private static Plugin pluginProxy(String name) {

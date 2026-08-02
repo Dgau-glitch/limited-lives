@@ -71,7 +71,10 @@ public class PlayerListener extends AnnoyingListener {
         }
 
         // Check PvP toggle and death cause before entering the life-loss flow.
-        if (!LifeLossPolicy.shouldLoseLife(isPvp, plugin.config.lives.loseOnPlayerKill, cause, plugin.config.deathCauses)) return;
+        final boolean playerKillAllowed = killerUuid != null
+                && plugin.getApi().isPlayerKillLifeLossAllowed(killerUuid);
+        if (!LifeLossPolicy.shouldLoseLife(isPvp, plugin.config.lives.loseOnPlayerKill,
+                playerKillAllowed, cause, plugin.config.deathCauses)) return;
         // Public API protection is UUID-only and safe in every Folia context.
         if (!plugin.getApi().isLifeLossEnabled(player.getUniqueId())) return;
         // Check WorldGuard regions

@@ -54,4 +54,18 @@ public interface LimitedLivesApi {
 
     /** Removes every scoped protection owned by the supplied plugin. */
     void clearProtections(@NotNull Plugin owner);
+
+    /**
+     * Allows this killer's PvP kills to enter the normal life-loss flow even
+     * when {@code lives.lose-on-player-kill} is globally disabled. Victim API
+     * protection, WorldGuard, grace, death-cause and event checks still apply.
+     */
+    @NotNull PlayerKillLifeLossAllowance allowPlayerKillLifeLoss(
+            @NotNull UUID killerId, @NotNull Plugin owner, @NotNull String reason);
+
+    /** True when at least one active scoped allowance exists for this killer. */
+    boolean isPlayerKillLifeLossAllowed(@NotNull UUID killerId);
+
+    /** Revokes every player-kill allowance owned by the supplied plugin. */
+    void clearPlayerKillLifeLossAllowances(@NotNull Plugin owner);
 }
