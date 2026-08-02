@@ -18,9 +18,11 @@ mkdir -p "$WORK_DIR/cache"
 curl --fail --location --silent --show-error "$MOJANG_URL" --output "$WORK_DIR/cache/mojang_1.21.11.jar"
 echo "$MOJANG_SHA1  $WORK_DIR/cache/mojang_1.21.11.jar" | sha1sum --check --status
 cp "$(find "$ROOT/build/libs" -maxdepth 1 -name 'LimitedLives-*.jar' | sort | tail -1)" "$WORK_DIR/plugins/LimitedLives.jar"
+if jar tf "$WORK_DIR/plugins/LimitedLives.jar" | rg -qi '(^|/)(bstats|metrics|telemetry|analytics)(/|\.|$)|AnnoyingStats'; then
+    echo 'Metrics implementation detected in runtime JAR' >&2
+    exit 1
+fi
 mkdir -p "$WORK_DIR/plugins/LimitedLives/libs/com/h2database/h2/2.2.224"
-mkdir -p "$WORK_DIR/plugins/LimitedLives/libs/org/bstats/bstats-base/3.2.1"
-mkdir -p "$WORK_DIR/plugins/LimitedLives/libs/org/bstats/bstats-bukkit/3.2.1"
 mkdir -p "$WORK_DIR/plugins/LimitedLives/libs/org/javassist/javassist/3.28.0-GA"
 mkdir -p "$WORK_DIR/plugins/LimitedLives/libs/org/reflections/reflections/0.10.2"
 mkdir -p "$WORK_DIR/plugins/LimitedLives/libs/org/ow2/asm/asm/9.7"
@@ -29,10 +31,6 @@ mkdir -p "$WORK_DIR/plugins/LimitedLives/libs/org/ow2/asm/asm-tree/9.7"
 mkdir -p "$WORK_DIR/plugins/LimitedLives/libs/me/lucko/jar-relocator/1.7"
 curl --fail --location --silent --show-error https://repo.maven.apache.org/maven2/com/h2database/h2/2.2.224/h2-2.2.224.jar \
     --output "$WORK_DIR/plugins/LimitedLives/libs/com/h2database/h2/2.2.224/h2-2.2.224.jar"
-curl --fail --location --silent --show-error https://repo.maven.apache.org/maven2/org/bstats/bstats-base/3.2.1/bstats-base-3.2.1.jar \
-    --output "$WORK_DIR/plugins/LimitedLives/libs/org/bstats/bstats-base/3.2.1/bstats-base-3.2.1.jar"
-curl --fail --location --silent --show-error https://repo.maven.apache.org/maven2/org/bstats/bstats-bukkit/3.2.1/bstats-bukkit-3.2.1.jar \
-    --output "$WORK_DIR/plugins/LimitedLives/libs/org/bstats/bstats-bukkit/3.2.1/bstats-bukkit-3.2.1.jar"
 curl --fail --location --silent --show-error https://repo.maven.apache.org/maven2/org/javassist/javassist/3.28.0-GA/javassist-3.28.0-GA.jar \
     --output "$WORK_DIR/plugins/LimitedLives/libs/org/javassist/javassist/3.28.0-GA/javassist-3.28.0-GA.jar"
 curl --fail --location --silent --show-error https://repo.maven.apache.org/maven2/org/reflections/reflections/0.10.2/reflections-0.10.2.jar \

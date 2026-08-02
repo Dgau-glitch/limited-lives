@@ -31,19 +31,28 @@ configurations.configureEach {
     // Folia API provides the Bukkit capability. Old transitive Bukkit artifacts from
     // AnnoyingAPI/WorldGuard must not compete with the selected server API.
     exclude(group = "org.bukkit", module = "bukkit")
+    exclude(group = "org.bstats")
 }
 
 dependencies {
     compileOnly("dev.folia:folia-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("me.clip:placeholderapi:2.12.2")
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.15")
-    implementation("org.bstats:bstats-bukkit:3.2.1")
     implementation("org.javassist:javassist:3.28.0-GA")
     implementation("org.reflections:reflections:0.10.2")
 
     testImplementation(platform("org.junit:junit-bom:5.14.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.shadowJar {
+    // AnnoyingAPI's optional metrics bridge is disabled in LimitedLives and must
+    // not be shipped. Keeping the bridge out also prevents an accidental future
+    // runtime linkage to bStats when no bStats implementation is present.
+    exclude("xyz/srnyx/annoyingapi/AnnoyingStats.class")
+    exclude("org/bstats/**")
+    exclude("bstats.yml")
 }
 
 tasks.test {

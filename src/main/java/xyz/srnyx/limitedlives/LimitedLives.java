@@ -52,6 +52,12 @@ public class LimitedLives extends AnnoyingPlugin {
 
     public LimitedLives() {
         options
+                // AnnoyingAPI 5.2.1 enables its optional metrics bridge through a
+                // boolean resource key. Point it at a deliberately absent internal
+                // key so the bridge is never loaded; its class is excluded from the JAR.
+                .bStatsOptions(bStatsOptions -> bStatsOptions
+                        .fileName("config.yml")
+                        .toggleKey("__limitedlives_internal_metrics_disabled"))
                 .pluginOptions(pluginOptions -> pluginOptions.updatePlatforms(new PluginPlatform.Multi(
                         PluginPlatform.modrinth("LvTKDASD"),
                         PluginPlatform.hangar(this),
@@ -98,7 +104,6 @@ public class LimitedLives extends AnnoyingPlugin {
         // SQL before invoking this extension point. No work is submitted from here.
         execution.stop();
         lifeStore.close();
-        if (stats != null && stats.bStats != null) stats.bStats.shutdown();
         MiscUtility.CPU_SCHEDULER.shutdownNow();
         MiscUtility.IO_SCHEDULER.shutdownNow();
     }

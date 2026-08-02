@@ -21,7 +21,7 @@ The built JAR was unpacked and scanned for scheduler, executor, future, timer an
 - `DataManager.toggleIntervalCacheSaving`: may create an async interval cache task. LimitedLives uses synchronous writes (`useCacheDefault(false)`) and explicitly cancels/nulls this task during enable and every reload, before shutdown.
 - `AnnoyingDownload`: contains a legacy `Bukkit.getScheduler().callSyncMethod` fallback and async dependency-download path. LimitedLives declares no automatically downloaded plugin dependencies, so this path is unreachable in its configured lifecycle. It must not be reused for future dependencies.
 - `MiscUtility.CPU_SCHEDULER` and `IO_SCHEDULER`: static Java scheduled executors. They are synchronously stopped with `shutdownNow()` from `disable()` and do not schedule Bukkit work.
-- bStats is disabled by default in the packaged `bstats.yml`. Existing installations that explicitly enable it are also safe: `disable()` calls its public `shutdown()` method before stopping the shaded Java executors.
+- AnnoyingAPI's optional bStats bridge is permanently disabled through its options before enable. The bridge class, bStats packages and `bstats.yml` are excluded from the runtime JAR, and no metrics dependency is declared or downloaded by the smoke harness.
 
 No shutdown hook (`Runtime.addShutdownHook`) was found in the application or shaded AnnoyingAPI classes. `AnnoyingPlugin.onDisable()` is final: it synchronously saves its cache and closes SQL before invoking LimitedLives `disable()`. Because JavaPlugin is already disabled, `LifecycleGate` rejects submissions for the whole callback; LimitedLives then closes its store, cancels tracked task handles and stops the two shaded Java executors without submitting any task.
 

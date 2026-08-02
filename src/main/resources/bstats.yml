@@ -1,5 +1,0 @@
-DOCUMENTATION: https://annoying-api.srnyx.com/wiki/bstats
-
-# Disabled because AnnoyingAPI 5.2.1 does not expose a deterministic metrics
-# scheduler shutdown hook required by the Folia-only lifecycle.
-enabled: false
