@@ -53,10 +53,10 @@ run_server() {
     )
 }
 
-run_server 45 console-first.log
+run_server 70 console-first.log
 cp "$WORK_DIR/logs/latest.log" "$WORK_DIR/first.log"
 sed -i '/^threaded-regions:/,/^[^ ]/ s/^  threads: .*/  threads: 4/' "$WORK_DIR/config/paper-global.yml"
-run_server 25 console-second.log
+run_server 40 console-second.log
 fi
 
 LOG="$WORK_DIR/logs/latest.log"
