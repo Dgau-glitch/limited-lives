@@ -39,6 +39,12 @@ public final class PlaceholderSnapshotService {
         }
     }
 
+    /** Updates the data-only component without resolving or touching a live player. */
+    public void updateLives(@NotNull UUID uuid, int lives) {
+        snapshots.computeIfPresent(uuid, (ignored, snapshot) -> new PlayerSnapshot(
+                snapshot.maxLives(), snapshot.bypass(), lives, snapshot.graceLeft()));
+    }
+
     @NotNull
     public PlayerSnapshot get(@NotNull UUID uuid) {
         final PlayerSnapshot snapshot = snapshots.get(uuid);

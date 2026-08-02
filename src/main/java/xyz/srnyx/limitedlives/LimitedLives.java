@@ -49,7 +49,7 @@ public class LimitedLives extends AnnoyingPlugin {
     @NotNull public final CommandExecutionService commands = new CommandExecutionService(this);
     @NotNull public final GameRuleService gameRules = new GameRuleService(this);
     @NotNull public final PlaceholderSnapshotService placeholders = new PlaceholderSnapshotService(this);
-    @NotNull private final DefaultLimitedLivesApi publicApi = new DefaultLimitedLivesApi();
+    @NotNull private final DefaultLimitedLivesApi publicApi = new DefaultLimitedLivesApi(this);
     @NotNull public final PlayerItemConsumeListener playerItemConsumeListener = new PlayerItemConsumeListener(this);
     @NotNull public final PlayerInteractListener playerInteractListener = new PlayerInteractListener(this);
     @NotNull public final CraftListener craftListener = new CraftListener(this);

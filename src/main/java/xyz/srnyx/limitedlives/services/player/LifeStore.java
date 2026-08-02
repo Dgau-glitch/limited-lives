@@ -12,8 +12,9 @@ import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
-import java.io.IOException;
 import java.util.logging.Level;
 
 /** UUID-only persistence boundary. It never accesses Bukkit players, entities or worlds. */
@@ -23,6 +24,7 @@ public final class LifeStore {
     @NotNull private final AtomicBoolean acceptingOperations = new AtomicBoolean(true);
     @NotNull private final Set<CacheKey> dirty = ConcurrentHashMap.newKeySet();
     @NotNull private final LifeJournal journal;
+    @NotNull private final CompletableFuture<Void> ready = new CompletableFuture<>();
 
     public LifeStore(@NotNull LimitedLives plugin) {
         this(plugin, new UuidLockManager());
@@ -39,17 +41,18 @@ public final class LifeStore {
     public void start() {
         journal.start();
         plugin.execution.runAsync(() -> {
-            if (!acceptingOperations.get() || plugin.dataManager == null) return;
-            plugin.dataManager.dialect.getMigrationDataFromDatabase(plugin.dataManager).ifPresent(migration -> {
-                final var entities = migration.data.get(plugin.dataManager.getTableName(EntityData.TABLE_NAME));
-                if (entities == null) return;
-                entities.forEach((target, values) -> values.forEach((key, value) -> {
-                    if (!dirty.contains(new CacheKey(target, key))) {
-                        plugin.dataManager.dialect.setToCache(plugin.dataManager.getTableName(EntityData.TABLE_NAME), target, key, value);
-                    }
-                }));
-            });
             try {
+                if (!acceptingOperations.get()) throw new IllegalStateException("Life store closed during preload");
+                if (plugin.dataManager == null) throw new IllegalStateException("LimitedLives data manager is unavailable");
+                plugin.dataManager.dialect.getMigrationDataFromDatabase(plugin.dataManager).ifPresent(migration -> {
+                    final var entities = migration.data.get(plugin.dataManager.getTableName(EntityData.TABLE_NAME));
+                    if (entities == null) return;
+                    entities.forEach((target, values) -> values.forEach((key, value) -> {
+                        if (!dirty.contains(new CacheKey(target, key))) {
+                            plugin.dataManager.dialect.setToCache(plugin.dataManager.getTableName(EntityData.TABLE_NAME), target, key, value);
+                        }
+                    }));
+                });
                 journal.load();
                 journal.snapshot().forEach((key, mutation) -> {
                     final CacheKey cacheKey = new CacheKey(key.uuid().toString(), key.key());
@@ -60,12 +63,23 @@ public final class LifeStore {
                         plugin.dataManager.dialect.setToCache(table(), cacheKey.target(), cacheKey.key(), new Value(mutation.value()));
                     }
                 });
-            } catch (final IOException exception) {
-                plugin.getLogger().log(Level.SEVERE, "Failed to load the life crash-recovery journal", exception);
+                ready.complete(null);
+                plugin.execution.runGlobal(() -> plugin.getServer().getOnlinePlayers().forEach(player ->
+                        plugin.execution.runForEntityOrNow(player, () -> plugin.placeholders.capture(player), () -> {})));
+            } catch (final Exception failure) {
+                ready.completeExceptionally(failure);
+                plugin.getLogger().log(Level.SEVERE, "Failed to preload life persistence; mutations remain disabled", failure);
             }
-            plugin.execution.runGlobal(() -> plugin.getServer().getOnlinePlayers().forEach(player ->
-                    plugin.execution.runForEntityOrNow(player, () -> plugin.placeholders.capture(player), () -> {})));
         });
+    }
+
+    public boolean isReady() {
+        return ready.isDone() && !ready.isCompletedExceptionally();
+    }
+
+    @NotNull
+    public CompletionStage<Void> ready() {
+        return ready.thenApply(ignored -> null);
     }
 
     public <T> T atomic(@NotNull UUID uuid, @NotNull Supplier<T> operation) {
@@ -118,6 +132,7 @@ public final class LifeStore {
     /** Stops new operations. AnnoyingPlugin has already synchronously flushed at this extension point. */
     public void close() {
         acceptingOperations.set(false);
+        if (!ready.isDone()) ready.completeExceptionally(new IllegalStateException("Life store closed before preload completed"));
         journal.close();
     }
 

@@ -21,6 +21,8 @@ The wrapper uses checksum-verified Gradle 8.14.3 and the build selects a Java 21
 
 ## Integration API
 
+The public API supports atomic UUID-only life awards for online and offline players, as well as life-loss protection and entity-context events.
+
 Add the LimitedLives JAR as a `compileOnly` dependency and `LimitedLives` as a `softdepend`. Resolve the API through Bukkit's `ServicesManager`:
 
 ```java

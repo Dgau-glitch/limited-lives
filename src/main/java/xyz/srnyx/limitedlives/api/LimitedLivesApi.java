@@ -4,6 +4,7 @@ import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Thread-safe public integration API for automatic death-driven life loss.
@@ -11,6 +12,24 @@ import java.util.UUID;
  * No method in this interface touches Bukkit entities or storage.
  */
 public interface LimitedLivesApi {
+    /** True after the asynchronous database/journal preload has completed. */
+    boolean isDataReady();
+
+    /** Adds lives atomically using {@link LifeOverflowPolicy#CLAMP} and returns the new value. */
+    int addLives(@NotNull UUID playerId, int amount);
+
+    /**
+     * Adds a positive number of lives through the UUID-only cache/journal path.
+     * The global configured maximum is used; permission-derived online maxima
+     * are intentionally not queried because this API never accesses entities.
+     */
+    @NotNull LifeMutationResult addLives(@NotNull UUID playerId, int amount,
+                                         @NotNull LifeOverflowPolicy overflowPolicy);
+
+    /** Queues the same UUID-only mutation until persistence preload is ready. */
+    @NotNull CompletionStage<LifeMutationResult> addLivesAsync(@NotNull UUID playerId, int amount,
+                                                               @NotNull LifeOverflowPolicy overflowPolicy);
+
     /** Enables life loss after a previous call to {@link #disableLifeLoss(UUID)}. */
     void enableLifeLoss(@NotNull UUID playerId);
 

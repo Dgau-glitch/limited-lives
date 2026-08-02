@@ -1,8 +1,8 @@
-package xyz.srnyx.limitedlives.api;
+package xyz.srnyx.limitedlives.api.internal;
 
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
-import xyz.srnyx.limitedlives.api.internal.DefaultLimitedLivesApi;
+import xyz.srnyx.limitedlives.api.LifeLossProtection;
 
 import java.lang.reflect.Proxy;
 import java.util.UUID;

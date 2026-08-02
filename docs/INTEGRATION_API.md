@@ -9,6 +9,31 @@ LimitedLivesApi api = Bukkit.getServicesManager().load(LimitedLivesApi.class);
 if (api == null) return; // LimitedLives is not installed/enabled
 ```
 
+## Awarding lives by UUID
+
+The production mutation method is entity-free and works for both online and offline UUIDs. It serializes the read-modify-write operation through `LifeStore`, applies the configured global `lives.min`/`lives.max`, and uses the same crash-recovery journal as native LimitedLives changes:
+
+```java
+LifeMutationResult result = api.addLives(playerId, reward, LifeOverflowPolicy.CLAMP);
+if (result.appliedAmount() > 0) {
+    logger.info("Awarded " + result.appliedAmount() + " lives");
+}
+if (result.revived()) {
+    // The UUID moved out of the no-lives state.
+}
+```
+
+`CLAMP` awards as much as fits below `lives.max`; `REJECT` makes no change when the full requested amount would exceed the maximum. The result reports the old/new values, requested/applied amount, maximum limiting, revival and rejection. `addLives(UUID, int)` is the shorthand for `CLAMP` and returns the new total.
+
+The synchronous methods require `api.isDataReady()` to be true and never query Bukkit entities. During early startup, use the non-blocking variant instead of waiting on a Folia tick thread:
+
+```java
+api.addLivesAsync(playerId, reward, LifeOverflowPolicy.CLAMP)
+        .thenAccept(result -> auditQueue.accept(result)); // data-only continuation
+```
+
+The returned stage does not grant ownership of a Bukkit entity. Route any subsequent player message or inventory/world change through that player's `EntityScheduler`.
+
 ## Protecting a morphed player
 
 The simple toggle is available for integrations that exclusively own the state:
