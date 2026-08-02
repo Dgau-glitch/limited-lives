@@ -1,6 +1,5 @@
 package xyz.srnyx.limitedlives.config;
 
-import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.inventory.Recipe;
@@ -12,8 +11,6 @@ import xyz.srnyx.annoyingapi.AnnoyingPlugin;
 import xyz.srnyx.annoyingapi.data.ItemData;
 import xyz.srnyx.annoyingapi.file.AnnoyingResource;
 import xyz.srnyx.annoyingapi.libs.javautilities.manipulation.Mapper;
-import xyz.srnyx.annoyingapi.reflection.org.bukkit.RefGameRule;
-import xyz.srnyx.annoyingapi.reflection.org.bukkit.RefWorld;
 
 import xyz.srnyx.limitedlives.LimitedLives;
 import xyz.srnyx.limitedlives.managers.player.PlayerManager;
@@ -24,7 +21,7 @@ import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 
-public class LimitedConfig {
+public final class LimitedConfig {
     @NotNull private final AnnoyingResource config;
     @NotNull public final Lives lives;
     @NotNull public final Set<String> deathCauses;
@@ -33,16 +30,18 @@ public class LimitedConfig {
     @NotNull public final Commands commands;
     @NotNull public final Obtaining obtaining;
     @NotNull public final WorldsBlacklist worldsBlacklist;
+    @NotNull public final Persistence persistence;
 
     public LimitedConfig(@NotNull LimitedLives plugin) {
         config = new AnnoyingResource(plugin, "config.yml");
         lives = new Lives();
-        deathCauses = getDamageCauses(config.getStringList("death-causes"));
+        deathCauses = Set.copyOf(getDamageCauses(config.getStringList("death-causes")));
         keepInventory = new KeepInventory();
         gracePeriod = new GracePeriod();
         commands = new Commands();
         obtaining = new Obtaining();
         worldsBlacklist = new WorldsBlacklist();
+        persistence = new Persistence();
     }
 
     @NotNull
@@ -56,26 +55,16 @@ public class LimitedConfig {
         public final int def = config.getInt("lives.default", 5);
         public final int max = config.getInt("lives.max", 10);
         public final int min = config.getInt("lives.min", 0);
+        public final boolean loseOnPlayerKill = config.getBoolean("lives.lose-on-player-kill", true);
+    }
+
+    public class Persistence {
+        public final long journalFlushDelayMillis = Math.max(0, config.getLong("persistence.journal-flush-delay-ms", 50));
     }
 
     public class KeepInventory {
         public final boolean enabled = config.getBoolean("keep-inventory.enabled", false);
         @NotNull public final Actions actions = new Actions();
-
-        public KeepInventory() {
-            // Disable keepInventory in worlds where it is enabled
-            if (enabled) {
-                Bukkit.getWorlds().stream()
-                        .filter(world -> {
-                            final String value = RefWorld.getGameRuleValue(world, "keepInventory", RefGameRule.GAME_RULE_KEEP_INVENTORY);
-                            return value != null && value.equalsIgnoreCase("true");
-                        })
-                        .forEach(world -> {
-                            AnnoyingPlugin.log(Level.WARNING, "keep_inventory is enabled in " + world.getName() + "! The plugin is disabling it to ensure the keep-inventory feature works properly");
-                            RefWorld.setGameRuleValue(world, "keepInventory", RefGameRule.GAME_RULE_KEEP_INVENTORY, false);
-                        });
-            }
-        }
 
         public class Actions {
             @NotNull private final KeepInventoryAction def;
@@ -112,29 +101,24 @@ public class LimitedConfig {
     public class GracePeriod {
         public final boolean enabled = config.getBoolean("grace-period.enabled", false);
         @NotNull public final Duration duration = Duration.ofSeconds(config.getInt("grace-period.duration", 60));
-        @NotNull public final Set<GracePeriodTrigger> triggers = new HashSet<>();
-        @NotNull public final Set<String> bypassCauses = getDamageCauses(config.getStringList("grace-period.bypass-causes"));
-        @NotNull public final Set<String> disabledDamageCauses = getDamageCauses(config.getStringList("grace-period.disabled-damage-causes"));
+        @NotNull public final Set<GracePeriodTrigger> triggers;
+        @NotNull public final Set<String> bypassCauses = Set.copyOf(getDamageCauses(config.getStringList("grace-period.bypass-causes")));
+        @NotNull public final Set<String> disabledDamageCauses = Set.copyOf(getDamageCauses(config.getStringList("grace-period.disabled-damage-causes")));
 
         public GracePeriod() {
-            for (final String string : config.getStringList("grace-period.triggers")) Mapper.toEnum(string, GracePeriodTrigger.class).ifPresent(triggers::add);
+            final Set<GracePeriodTrigger> parsed = new HashSet<>();
+            for (final String string : config.getStringList("grace-period.triggers")) Mapper.toEnum(string, GracePeriodTrigger.class).ifPresent(parsed::add);
+            triggers = Set.copyOf(parsed);
         }
     }
 
     public class Commands {
         @NotNull public final Punishment punishment = new Punishment();
-        @NotNull public final List<String> revive = config.getStringList("commands.revive");
+        @NotNull public final List<String> revive = List.copyOf(config.getStringList("commands.revive"));
 
         public class Punishment {
-            @NotNull private static final String COMMANDS_PUNISHMENT_RESPAWN = "commands.punishment.respawn";
-
-            @NotNull public final List<String> death = config.getStringList("commands.punishment.death");
-            @NotNull public final List<String> respawn = config.getStringList(COMMANDS_PUNISHMENT_RESPAWN);
-
-            public Punishment() {
-                // Folia check for respawn commands
-                if (AnnoyingPlugin.FOLIA && !respawn.isEmpty()) AnnoyingPlugin.log(Level.WARNING, "&c&lThe respawn punishment commands are not supported on Folia! &cPlease enable the doImmediateRespawn gamerule and use death commands instead.\n&c&oTo disable this message, set &4&o" + COMMANDS_PUNISHMENT_RESPAWN + "&c&o to &4&o[]&c&o in &4&oconfig.yml");
-            }
+            @NotNull public final List<String> death = List.copyOf(config.getStringList("commands.punishment.death"));
+            @NotNull public final List<String> respawn = List.copyOf(config.getStringList("commands.punishment.respawn"));
         }
     }
 
@@ -146,16 +130,18 @@ public class LimitedConfig {
             @NotNull private static final String OBTAINING_CRAFTING_TRIGGERS = "obtaining.crafting.triggers";
 
             public final int amount = config.getInt("obtaining.crafting.amount", 1);
-            @NotNull public final Set<CraftingTrigger> triggers = new HashSet<>();
+            @NotNull public final Set<CraftingTrigger> triggers;
             @NotNull public final Duration cooldown = Duration.ofMillis(config.getLong("obtaining.crafting.cooldown", 500));
             @Nullable public final Recipe recipe = config.getBoolean("obtaining.crafting.enabled", true) ? config.getRecipe("obtaining.crafting.recipe", item -> new ItemData(config.plugin, item).setChain(PlayerManager.ITEM_KEY, true).target, "life").orElse(null) : null;
 
             public Crafting() {
+                final Set<CraftingTrigger> parsed = new HashSet<>();
                 if (config.isSet(OBTAINING_CRAFTING_TRIGGERS)) {
-                    for (final String string : config.getStringList(OBTAINING_CRAFTING_TRIGGERS)) Mapper.toEnum(string, CraftingTrigger.class).ifPresent(triggers::add);
+                    for (final String string : config.getStringList(OBTAINING_CRAFTING_TRIGGERS)) Mapper.toEnum(string, CraftingTrigger.class).ifPresent(parsed::add);
                 } else {
-                    triggers.add(CraftingTrigger.CONSUME);
+                    parsed.add(CraftingTrigger.CONSUME);
                 }
+                triggers = Set.copyOf(parsed);
             }
         }
     }
@@ -163,18 +149,20 @@ public class LimitedConfig {
     public class WorldsBlacklist {
         @NotNull private static final String WORLDS_BLACKLIST_AFFECTED_FEATURES = "worlds-blacklist.affected-features";
 
-        @NotNull public final Set<String> list = config.getStringList("worlds-blacklist.list").stream()
+        @NotNull public final Set<String> list = Set.copyOf(config.getStringList("worlds-blacklist.list").stream()
                 .map(String::toLowerCase)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet()));
         public final boolean actAsWhitelist = config.getBoolean("worlds-blacklist.act-as-whitelist", false);
-        private final Set<Feature> affectedFeatures = new HashSet<>();
+        private final Set<Feature> affectedFeatures;
 
         public WorldsBlacklist() {
+            final Set<Feature> parsed = new HashSet<>();
             if (config.isSet(WORLDS_BLACKLIST_AFFECTED_FEATURES)) {
-                for (final String string : config.getStringList(WORLDS_BLACKLIST_AFFECTED_FEATURES)) Mapper.toEnum(string, Feature.class).ifPresent(affectedFeatures::add);
+                for (final String string : config.getStringList(WORLDS_BLACKLIST_AFFECTED_FEATURES)) Mapper.toEnum(string, Feature.class).ifPresent(parsed::add);
             } else {
-                affectedFeatures.addAll(Arrays.asList(Feature.values()));
+                parsed.addAll(Arrays.asList(Feature.values()));
             }
+            affectedFeatures = Set.copyOf(parsed);
         }
 
         public boolean isWorldEnabled(@NotNull World world, @NotNull Feature feature) {

@@ -3,7 +3,6 @@ import xyz.srnyx.gradlegalaxy.data.config.JavaSetupConfig
 import xyz.srnyx.gradlegalaxy.enums.Repository
 import xyz.srnyx.gradlegalaxy.enums.repository
 import xyz.srnyx.gradlegalaxy.utility.setupAnnoyingAPI
-import xyz.srnyx.gradlegalaxy.utility.spigotAPI
 
 
 plugins {
@@ -12,7 +11,6 @@ plugins {
     id("com.gradleup.shadow") version "8.3.9"
 }
 
-spigotAPI(config = DependencyConfig("1.8.8"))
 setupAnnoyingAPI(
     javaSetupConfig = JavaSetupConfig(
         "xyz.srnyx",
@@ -21,7 +19,49 @@ setupAnnoyingAPI(
     annoyingAPIConfig = DependencyConfig("5.2.1"))
 
 repository(Repository.PLACEHOLDER_API, Repository.ENGINE_HUB)
+repositories {
+    maven("https://repo.papermc.io/repository/maven-public/")
+}
+
+java {
+    toolchain.languageVersion.set(JavaLanguageVersion.of(21))
+}
+
+configurations.configureEach {
+    // Folia API provides the Bukkit capability. Old transitive Bukkit artifacts from
+    // AnnoyingAPI/WorldGuard must not compete with the selected server API.
+    exclude(group = "org.bukkit", module = "bukkit")
+    exclude(group = "org.bstats")
+}
+
 dependencies {
+    compileOnly("dev.folia:folia-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("me.clip:placeholderapi:2.12.2")
-    compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.0")
+    compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.15")
+    implementation("org.javassist:javassist:3.28.0-GA")
+    implementation("org.reflections:reflections:0.10.2")
+
+    testImplementation(platform("org.junit:junit-bom:5.14.3"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("dev.folia:folia-api:1.21.11-R0.1-SNAPSHOT")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.shadowJar {
+    // AnnoyingAPI's optional metrics bridge is disabled in LimitedLives and must
+    // not be shipped. Keeping the bridge out also prevents an accidental future
+    // runtime linkage to bStats when no bStats implementation is present.
+    exclude("xyz/srnyx/annoyingapi/AnnoyingStats.class")
+    exclude("org/bstats/**")
+    exclude("bstats.yml")
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    // Keep API migrations visible as actionable call-site warnings instead of a
+    // generic "uses deprecated API" note.
+    options.compilerArgs.add("-Xlint:deprecation")
 }

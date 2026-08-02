@@ -17,13 +17,39 @@ import xyz.srnyx.limitedlives.listeners.PlayerListener;
 import xyz.srnyx.limitedlives.managers.PlaceholderManager;
 import xyz.srnyx.limitedlives.managers.WorldGuardManager;
 import xyz.srnyx.limitedlives.managers.player.PlayerManager;
+import xyz.srnyx.limitedlives.services.execution.FoliaExecutionService;
+import xyz.srnyx.limitedlives.services.player.LifeStore;
+import xyz.srnyx.limitedlives.services.player.LifeItemUseService;
+import xyz.srnyx.limitedlives.services.player.OnlinePlayerDirectory;
+import xyz.srnyx.limitedlives.services.player.LifeTransferService;
+import xyz.srnyx.limitedlives.services.execution.CommandFeedbackService;
+import xyz.srnyx.limitedlives.services.execution.RecipeRegistrationService;
+import xyz.srnyx.limitedlives.services.execution.CommandExecutionService;
+import xyz.srnyx.limitedlives.services.execution.GameRuleService;
+import xyz.srnyx.limitedlives.services.player.PlaceholderSnapshotService;
+import xyz.srnyx.limitedlives.api.LimitedLivesApi;
+import xyz.srnyx.limitedlives.api.internal.DefaultLimitedLivesApi;
+import xyz.srnyx.annoyingapi.libs.javautilities.MiscUtility;
 
 import java.io.File;
 import java.util.logging.Level;
+import org.bukkit.event.HandlerList;
+import org.bukkit.plugin.ServicePriority;
 
 
 public class LimitedLives extends AnnoyingPlugin {
-    public LimitedConfig config;
+    public volatile LimitedConfig config;
+    @NotNull public final FoliaExecutionService execution = new FoliaExecutionService(this);
+    @NotNull public final LifeStore lifeStore = new LifeStore(this);
+    @NotNull public final CommandFeedbackService feedback = new CommandFeedbackService(this);
+    @NotNull public final LifeItemUseService lifeItemUseService = new LifeItemUseService(this);
+    @NotNull public final OnlinePlayerDirectory onlinePlayers = new OnlinePlayerDirectory();
+    @NotNull public final LifeTransferService lifeTransferService = new LifeTransferService(this);
+    @NotNull public final RecipeRegistrationService recipes = new RecipeRegistrationService(this);
+    @NotNull public final CommandExecutionService commands = new CommandExecutionService(this);
+    @NotNull public final GameRuleService gameRules = new GameRuleService(this);
+    @NotNull public final PlaceholderSnapshotService placeholders = new PlaceholderSnapshotService(this);
+    @NotNull private final DefaultLimitedLivesApi publicApi = new DefaultLimitedLivesApi(this);
     @NotNull public final PlayerItemConsumeListener playerItemConsumeListener = new PlayerItemConsumeListener(this);
     @NotNull public final PlayerInteractListener playerInteractListener = new PlayerInteractListener(this);
     @NotNull public final CraftListener craftListener = new CraftListener(this);
@@ -31,13 +57,19 @@ public class LimitedLives extends AnnoyingPlugin {
 
     public LimitedLives() {
         options
+                // AnnoyingAPI 5.2.1 enables its optional metrics bridge through a
+                // boolean resource key. Point it at a deliberately absent internal
+                // key so the bridge is never loaded; its class is excluded from the JAR.
+                .bStatsOptions(bStatsOptions -> bStatsOptions
+                        .fileName("config.yml")
+                        .toggleKey("__limitedlives_internal_metrics_disabled"))
                 .pluginOptions(pluginOptions -> pluginOptions.updatePlatforms(new PluginPlatform.Multi(
                         PluginPlatform.modrinth("LvTKDASD"),
                         PluginPlatform.hangar(this),
                         PluginPlatform.spigot("109078"))))
-                .bStatsOptions(bStatsOptions -> bStatsOptions.id(18304))
                 .dataOptions(dataOptions -> dataOptions
                         .enabled(true)
+                        .useCacheDefault(true)
                         .entityDataColumns(
                                 PlayerManager.LIVES_KEY,
                                 PlayerManager.DEAD_KEY,
@@ -59,27 +91,61 @@ public class LimitedLives extends AnnoyingPlugin {
 
     @Override
     public void enable() {
+        // Force shaded executors to be created during RUNNING, never lazily from disable().
+        MiscUtility.CPU_SCHEDULER.isShutdown();
+        MiscUtility.IO_SCHEDULER.isShutdown();
+        execution.start();
+        Bukkit.getServicesManager().register(LimitedLivesApi.class, publicApi, this, ServicePriority.Normal);
+        Bukkit.getPluginManager().registerEvents(publicApi, this);
+        disableIntervalCacheTask();
         reload();
-        if (config.obtaining.crafting.recipe != null) try {
-            Bukkit.addRecipe(config.obtaining.crafting.recipe);
-        } catch (final Exception e) {
-            log(Level.WARNING, "&cFailed to add crafting recipe!", e);
-        }
+        Bukkit.getOnlinePlayers().forEach(onlinePlayers::joined);
+        lifeStore.start();
+    }
+
+    @Override
+    public void disable() {
+        // AnnoyingPlugin's final onDisable() synchronously flushes its cache and closes
+        // SQL before invoking this extension point. No work is submitted from here.
+        execution.stop();
+        lifeStore.close();
+        Bukkit.getServicesManager().unregister(LimitedLivesApi.class, publicApi);
+        HandlerList.unregisterAll(publicApi);
+        publicApi.close();
+        MiscUtility.CPU_SCHEDULER.shutdownNow();
+        MiscUtility.IO_SCHEDULER.shutdownNow();
     }
 
     @Override
     public void reload() {
-        // Load config
-        config = new LimitedConfig(this);
+        disableIntervalCacheTask();
+        // Phase 1: fully parse and validate a detached candidate.
+        final LimitedConfig next = new LimitedConfig(this);
+        // Phase 2: publish the complete immutable snapshot in one volatile write.
+        config = next;
+        // Phase 3: apply Bukkit effects from the global region context.
+        gameRules.apply(next);
+        recipes.replace(next.obtaining.crafting.recipe);
         // Store WorldGuard RegionContainer (needs to happen on enable after WorldGuard enables)
         if (worldGuard != null) worldGuard.storeRegionContainer();
         // Detect very old data (data/data.yml, 2.0.1 and lower)
         final File oldDataFile = new File(getDataFolder(), "data/data.yml");
-        if (oldDataFile.exists()) log(Level.SEVERE, "&c&lOld data detected!&c To keep your old data, please update to &43.0.1&c FIRST and then to &4" + getDescription().getVersion() + "&c! &oIf this is incorrect, delete &4&o" + oldDataFile.getPath());
+        if (oldDataFile.exists()) log(Level.SEVERE, "&c&lOld data detected!&c To keep your old data, please update to &43.0.1&c FIRST and then to &4" + getPluginMeta().getVersion() + "&c! &oIf this is incorrect, delete &4&o" + oldDataFile.getPath());
 
         // Register appropriate listeners
-        playerItemConsumeListener.setRegistered(config.obtaining.crafting.triggers.contains(CraftingTrigger.CONSUME));
-        playerInteractListener.setRegistered(config.obtaining.crafting.triggers.contains(CraftingTrigger.LEFT_CLICK) || config.obtaining.crafting.triggers.contains(CraftingTrigger.RIGHT_CLICK));
-        craftListener.setRegistered(config.obtaining.crafting.recipe != null);
+        playerItemConsumeListener.setRegistered(next.obtaining.crafting.triggers.contains(CraftingTrigger.CONSUME));
+        playerInteractListener.setRegistered(next.obtaining.crafting.triggers.contains(CraftingTrigger.LEFT_CLICK) || next.obtaining.crafting.triggers.contains(CraftingTrigger.RIGHT_CLICK));
+        craftListener.setRegistered(next.obtaining.crafting.recipe != null);
+    }
+
+    private void disableIntervalCacheTask() {
+        if (dataManager == null || dataManager.cacheSavingTask == null) return;
+        dataManager.cacheSavingTask.cancel();
+        dataManager.cacheSavingTask = null;
+    }
+
+    @NotNull
+    public LimitedLivesApi getApi() {
+        return publicApi;
     }
 }
