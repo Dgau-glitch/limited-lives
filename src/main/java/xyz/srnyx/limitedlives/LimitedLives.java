@@ -122,7 +122,7 @@ public class LimitedLives extends AnnoyingPlugin {
         if (worldGuard != null) worldGuard.storeRegionContainer();
         // Detect very old data (data/data.yml, 2.0.1 and lower)
         final File oldDataFile = new File(getDataFolder(), "data/data.yml");
-        if (oldDataFile.exists()) log(Level.SEVERE, "&c&lOld data detected!&c To keep your old data, please update to &43.0.1&c FIRST and then to &4" + getDescription().getVersion() + "&c! &oIf this is incorrect, delete &4&o" + oldDataFile.getPath());
+        if (oldDataFile.exists()) log(Level.SEVERE, "&c&lOld data detected!&c To keep your old data, please update to &43.0.1&c FIRST and then to &4" + getPluginMeta().getVersion() + "&c! &oIf this is incorrect, delete &4&o" + oldDataFile.getPath());
 
         // Register appropriate listeners
         playerItemConsumeListener.setRegistered(next.obtaining.crafting.triggers.contains(CraftingTrigger.CONSUME));

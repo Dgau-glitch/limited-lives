@@ -58,3 +58,9 @@ tasks.shadowJar {
 tasks.test {
     useJUnitPlatform()
 }
+
+tasks.withType<JavaCompile>().configureEach {
+    // Keep API migrations visible as actionable call-site warnings instead of a
+    // generic "uses deprecated API" note.
+    options.compilerArgs.add("-Xlint:deprecation")
+}
