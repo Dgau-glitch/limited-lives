@@ -6,6 +6,7 @@
 
 - Compile API: `dev.folia:folia-api:1.21.11-R0.1-SNAPSHOT` из официального PaperMC Maven repository.
 - Java toolchain и bytecode: Java 21 (class major version 65).
+- Wrapper зафиксирован на Gradle 8.14.3 с официальной SHA-256 проверкой дистрибутива. Эта стабильная версия совместима с Java 21 и IDE Gradle integrations и не зависит от повреждённого/несовместимого Gradle 9 worker bootstrap.
 - Старые транзитивные `org.bukkit:bukkit` от AnnoyingAPI и WorldGuard исключены: Bukkit capability предоставляет Folia API.
 - Folia API подключён как `compileOnly` и не должен попадать в shadow JAR.
 - Полный снимок `compileClasspath` сохранён в [`baseline/compile-classpath.txt`](baseline/compile-classpath.txt). В нём успешно разрешены Folia API 1.21.11, AnnoyingAPI 5.2.1, PlaceholderAPI 2.12.2 и WorldGuard 7.0.15.

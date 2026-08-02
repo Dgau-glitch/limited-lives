@@ -9,6 +9,16 @@
 
 All player/entity work is dispatched through Folia ownership schedulers. Placeholder values use non-blocking snapshots, so permission-derived values are refreshed from player-owned event/command contexts rather than blocking a region thread.
 
+## Building
+
+Use the checked-in wrapper rather than an IDE-bundled or system Gradle:
+
+```bash
+./gradlew clean build
+```
+
+The wrapper uses checksum-verified Gradle 8.14.3 and the build selects a Java 21 toolchain. In IntelliJ IDEA, set **Gradle distribution** to `Wrapper` and **Gradle JVM** to Java 21. This prevents IDE/Gradle worker bootstrap mismatches and keeps local and CI builds identical.
+
 Every player has a limited amount of lives. When a player loses all of their lives, they are punished (according to the config). Almost everything is configurable. *Originally made for [Mickaboo](https://youtube.com/@Mickabo)*
 
 **🐛 Bugs / 💡 Suggestions:** Please [open an issue](https://github.com/srnyx/limited-lives/issues/new/choose) to report a bug or suggest an idea
