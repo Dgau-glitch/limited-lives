@@ -36,7 +36,10 @@ configurations.configureEach {
 dependencies {
     compileOnly("dev.folia:folia-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("me.clip:placeholderapi:2.12.2")
-    compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.0")
+    compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.15")
+    implementation("org.bstats:bstats-bukkit:3.2.1")
+    implementation("org.javassist:javassist:3.28.0-GA")
+    implementation("org.reflections:reflections:0.10.2")
 
     testImplementation(platform("org.junit:junit-bom:5.14.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")

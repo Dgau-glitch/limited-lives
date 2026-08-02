@@ -1,6 +1,5 @@
 package xyz.srnyx.limitedlives.managers;
 
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import org.jetbrains.annotations.NotNull;
@@ -10,6 +9,9 @@ import xyz.srnyx.annoyingapi.AnnoyingPAPIExpansion;
 
 import xyz.srnyx.limitedlives.LimitedLives;
 import xyz.srnyx.limitedlives.managers.player.PlayerManager;
+import xyz.srnyx.limitedlives.services.player.PlaceholderSnapshotService;
+
+import java.util.UUID;
 
 
 public class PlaceholderManager extends AnnoyingPAPIExpansion {
@@ -41,27 +43,30 @@ public class PlaceholderManager extends AnnoyingPAPIExpansion {
             case "min": return String.valueOf(plugin.config.lives.min);
         }
 
-        // Get player
+        String explicitName = "";
         if (player == null) {
             final int underscoreIndex = identifier.indexOf('_');
             if (underscoreIndex == -1) return null;
-            player = Bukkit.getPlayerExact(identifier.substring(underscoreIndex + 1));
-            if (player == null) return "N/A";
+            explicitName = identifier.substring(underscoreIndex + 1);
             identifier = identifier.substring(0, underscoreIndex).toLowerCase(); // Needs to be set after player
         }
+        final UUID uuid = plugin.placeholders.resolve(player, explicitName);
+        if (uuid == null) return "N/A";
+        final PlaceholderSnapshotService.PlayerSnapshot snapshot = plugin.placeholders.get(uuid);
+        final PlayerManager manager = new PlayerManager(plugin, uuid, explicitName.isEmpty() ? uuid.toString() : explicitName, snapshot.maxLives());
 
         // Player placeholders
         switch (identifier) {
             // lives
-            case "lives": return String.valueOf(new PlayerManager(plugin, player).getLives());
+            case "lives": return String.valueOf(manager.getLives());
             // max
-            case "max": return String.valueOf(new PlayerManager(plugin, player).getMaxLives());
+            case "max": return String.valueOf(snapshot.maxLives());
             // grace-active
-            case "grace-active": return String.valueOf(new PlayerManager(plugin, player).hasGrace());
+            case "grace-active": return String.valueOf(manager.hasGrace());
             // grace-left
-            case "grace-left": return String.valueOf(new PlayerManager(plugin, player).getGraceLeft());
+            case "grace-left": return String.valueOf(manager.getGraceLeft());
             // bypass
-            case "bypass": return String.valueOf(player.hasPermission("limitedlives.bypass"));
+            case "bypass": return String.valueOf(snapshot.bypass());
         }
 
         // Unknown placeholder

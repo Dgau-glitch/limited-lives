@@ -118,7 +118,7 @@ public class PlayerManager {
     }
 
     public int setLives(int amount) throws ActionException {
-        return plugin.lifeStore.atomicChecked(uuid, () -> {
+        final int result = plugin.lifeStore.atomicChecked(uuid, () -> {
             LifeValuePolicy.set(amount, plugin.config.lives.min, getMaxLives());
             final int oldLives = getLivesUnlocked();
             plugin.lifeStore.set(uuid, LIVES_KEY, amount);
@@ -126,16 +126,20 @@ public class PlayerManager {
             if (LifeValuePolicy.shouldKill(amount, plugin.config.lives.min)) kill(null, null);
             return amount;
         });
+        refreshPlaceholderSnapshot();
+        return result;
     }
 
     public int addLives(int amount) throws MoreThanMaxLives {
-        return plugin.lifeStore.atomicChecked(uuid, () -> {
+        final int result = plugin.lifeStore.atomicChecked(uuid, () -> {
             final int oldLives = getLivesUnlocked();
             final int newLives = LifeValuePolicy.add(oldLives, amount, getMaxLives());
             plugin.lifeStore.set(uuid, LIVES_KEY, newLives);
             if (LifeValuePolicy.shouldRevive(oldLives, newLives, plugin.config.lives.min)) revive();
             return newLives;
         });
+        refreshPlaceholderSnapshot();
+        return result;
     }
 
     public int removeLives(int amount, @Nullable Player killer) throws LessThanMinLives {
@@ -143,12 +147,14 @@ public class PlayerManager {
     }
 
     public int removeLives(int amount, @Nullable UUID killerUuid, @Nullable String killerName) throws LessThanMinLives {
-        return plugin.lifeStore.atomicChecked(uuid, () -> {
+        final int result = plugin.lifeStore.atomicChecked(uuid, () -> {
             final int newLives = LifeValuePolicy.remove(getLivesUnlocked(), amount, plugin.config.lives.min);
             plugin.lifeStore.set(uuid, LIVES_KEY, newLives);
             if (LifeValuePolicy.shouldKill(newLives, plugin.config.lives.min)) kill(killerUuid, killerName);
             return newLives;
         });
+        refreshPlaceholderSnapshot();
+        return result;
     }
 
     public int withdrawLives(@NotNull Player sender, int amount) throws LessThanMinLives, RecipeNotSet {
@@ -192,6 +198,10 @@ public class PlayerManager {
             prepared.add(command.replace("%player%", playerName));
         }
         plugin.execution.runGlobal(() -> prepared.forEach(command -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command)));
+    }
+
+    private void refreshPlaceholderSnapshot() {
+        if (offline instanceof Player player && plugin.getServer().isOwnedByCurrentRegion(player)) plugin.placeholders.capture(player);
     }
 
 }

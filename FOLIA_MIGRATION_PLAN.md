@@ -48,7 +48,7 @@ compileOnly("dev.folia:folia-api:1.21.11-R0.1-SNAPSHOT")
 
 ## Этапы реализации
 
-> Статус: этапы 1–6 реализованы. Сборочный снимок и аудит AnnoyingAPI сохранены в `docs/FOLIA_BASELINE.md`; следующие изменения начинаются с этапа 7.
+> Статус: этапы 1–9 реализованы. Сборочный снимок и аудит AnnoyingAPI сохранены в `docs/FOLIA_BASELINE.md`; миграция завершена; дальнейшие изменения проходят через regression matrix.
 
 ### 1. Перевести build на Folia API 1.21.11 и зафиксировать baseline
 

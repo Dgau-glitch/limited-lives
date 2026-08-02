@@ -1,5 +1,14 @@
 # Limited Lives
 
+## Requirements
+
+- **Folia 1.21.11** (this build is Folia-only and is not supported on ordinary Paper/Spigot servers)
+- **Java 21**
+- Optional: PlaceholderAPI 2.12.2 or newer
+- Optional: WorldGuard 7.0.15 with its matching WorldEdit dependency
+
+All player/entity work is dispatched through Folia ownership schedulers. Placeholder values use non-blocking snapshots, so permission-derived values are refreshed from player-owned event/command contexts rather than blocking a region thread.
+
 Every player has a limited amount of lives. When a player loses all of their lives, they are punished (according to the config). Almost everything is configurable. *Originally made for [Mickaboo](https://youtube.com/@Mickabo)*
 
 **🐛 Bugs / 💡 Suggestions:** Please [open an issue](https://github.com/srnyx/limited-lives/issues/new/choose) to report a bug or suggest an idea

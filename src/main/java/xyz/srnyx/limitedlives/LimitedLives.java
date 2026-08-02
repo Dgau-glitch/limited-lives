@@ -25,13 +25,16 @@ import xyz.srnyx.limitedlives.services.player.LifeTransferService;
 import xyz.srnyx.limitedlives.services.execution.CommandFeedbackService;
 import xyz.srnyx.limitedlives.services.execution.RecipeRegistrationService;
 import xyz.srnyx.limitedlives.services.execution.CommandExecutionService;
+import xyz.srnyx.limitedlives.services.execution.GameRuleService;
+import xyz.srnyx.limitedlives.services.player.PlaceholderSnapshotService;
+import xyz.srnyx.annoyingapi.libs.javautilities.MiscUtility;
 
 import java.io.File;
 import java.util.logging.Level;
 
 
 public class LimitedLives extends AnnoyingPlugin {
-    public LimitedConfig config;
+    public volatile LimitedConfig config;
     @NotNull public final FoliaExecutionService execution = new FoliaExecutionService(this);
     @NotNull public final LifeStore lifeStore = new LifeStore(this);
     @NotNull public final CommandFeedbackService feedback = new CommandFeedbackService(this);
@@ -40,6 +43,8 @@ public class LimitedLives extends AnnoyingPlugin {
     @NotNull public final LifeTransferService lifeTransferService = new LifeTransferService(this);
     @NotNull public final RecipeRegistrationService recipes = new RecipeRegistrationService(this);
     @NotNull public final CommandExecutionService commands = new CommandExecutionService(this);
+    @NotNull public final GameRuleService gameRules = new GameRuleService(this);
+    @NotNull public final PlaceholderSnapshotService placeholders = new PlaceholderSnapshotService(this);
     @NotNull public final PlayerItemConsumeListener playerItemConsumeListener = new PlayerItemConsumeListener(this);
     @NotNull public final PlayerInteractListener playerInteractListener = new PlayerInteractListener(this);
     @NotNull public final CraftListener craftListener = new CraftListener(this);
@@ -51,7 +56,6 @@ public class LimitedLives extends AnnoyingPlugin {
                         PluginPlatform.modrinth("LvTKDASD"),
                         PluginPlatform.hangar(this),
                         PluginPlatform.spigot("109078"))))
-                .bStatsOptions(bStatsOptions -> bStatsOptions.id(18304))
                 .dataOptions(dataOptions -> dataOptions
                         .enabled(true)
                         .useCacheDefault(false)
@@ -76,8 +80,15 @@ public class LimitedLives extends AnnoyingPlugin {
 
     @Override
     public void enable() {
+        // Force shaded executors to be created during RUNNING, never lazily from disable().
+        MiscUtility.CPU_SCHEDULER.isShutdown();
+        MiscUtility.IO_SCHEDULER.isShutdown();
         execution.start();
-        Bukkit.getOnlinePlayers().forEach(player -> execution.runForEntityOrNow(player, () -> onlinePlayers.joined(player), () -> {}));
+        disableIntervalCacheTask();
+        Bukkit.getOnlinePlayers().forEach(player -> execution.runForEntityOrNow(player, () -> {
+            onlinePlayers.joined(player);
+            placeholders.capture(player);
+        }, () -> {}));
         reload();
     }
 
@@ -85,15 +96,23 @@ public class LimitedLives extends AnnoyingPlugin {
     public void disable() {
         // AnnoyingPlugin's final onDisable() synchronously flushes its cache and closes
         // SQL before invoking this extension point. No work is submitted from here.
-        lifeStore.close();
         execution.stop();
+        lifeStore.close();
+        if (stats != null && stats.bStats != null) stats.bStats.shutdown();
+        MiscUtility.CPU_SCHEDULER.shutdownNow();
+        MiscUtility.IO_SCHEDULER.shutdownNow();
     }
 
     @Override
     public void reload() {
-        // Load config
-        config = new LimitedConfig(this);
-        recipes.replace(config.obtaining.crafting.recipe);
+        disableIntervalCacheTask();
+        // Phase 1: fully parse and validate a detached candidate.
+        final LimitedConfig next = new LimitedConfig(this);
+        // Phase 2: publish the complete immutable snapshot in one volatile write.
+        config = next;
+        // Phase 3: apply Bukkit effects from the global region context.
+        gameRules.apply(next);
+        recipes.replace(next.obtaining.crafting.recipe);
         // Store WorldGuard RegionContainer (needs to happen on enable after WorldGuard enables)
         if (worldGuard != null) worldGuard.storeRegionContainer();
         // Detect very old data (data/data.yml, 2.0.1 and lower)
@@ -101,8 +120,14 @@ public class LimitedLives extends AnnoyingPlugin {
         if (oldDataFile.exists()) log(Level.SEVERE, "&c&lOld data detected!&c To keep your old data, please update to &43.0.1&c FIRST and then to &4" + getDescription().getVersion() + "&c! &oIf this is incorrect, delete &4&o" + oldDataFile.getPath());
 
         // Register appropriate listeners
-        playerItemConsumeListener.setRegistered(config.obtaining.crafting.triggers.contains(CraftingTrigger.CONSUME));
-        playerInteractListener.setRegistered(config.obtaining.crafting.triggers.contains(CraftingTrigger.LEFT_CLICK) || config.obtaining.crafting.triggers.contains(CraftingTrigger.RIGHT_CLICK));
-        craftListener.setRegistered(config.obtaining.crafting.recipe != null);
+        playerItemConsumeListener.setRegistered(next.obtaining.crafting.triggers.contains(CraftingTrigger.CONSUME));
+        playerInteractListener.setRegistered(next.obtaining.crafting.triggers.contains(CraftingTrigger.LEFT_CLICK) || next.obtaining.crafting.triggers.contains(CraftingTrigger.RIGHT_CLICK));
+        craftListener.setRegistered(next.obtaining.crafting.recipe != null);
+    }
+
+    private void disableIntervalCacheTask() {
+        if (dataManager == null || dataManager.cacheSavingTask == null) return;
+        dataManager.cacheSavingTask.cancel();
+        dataManager.cacheSavingTask = null;
     }
 }

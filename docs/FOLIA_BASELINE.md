@@ -8,7 +8,7 @@
 - Java toolchain и bytecode: Java 21 (class major version 65).
 - Старые транзитивные `org.bukkit:bukkit` от AnnoyingAPI и WorldGuard исключены: Bukkit capability предоставляет Folia API.
 - Folia API подключён как `compileOnly` и не должен попадать в shadow JAR.
-- Полный снимок `compileClasspath` сохранён в [`baseline/compile-classpath.txt`](baseline/compile-classpath.txt). В нём успешно разрешены Folia API 1.21.11, AnnoyingAPI 5.2.1, PlaceholderAPI 2.12.2 и WorldGuard 7.0.0.
+- Полный снимок `compileClasspath` сохранён в [`baseline/compile-classpath.txt`](baseline/compile-classpath.txt). В нём успешно разрешены Folia API 1.21.11, AnnoyingAPI 5.2.1, PlaceholderAPI 2.12.2 и WorldGuard 7.0.15.
 
 Исходный проект успешно компилировался против Spigot 1.8.8, но не проверял нативные Folia API. После первой замены зависимости Gradle обнаружил конфликт capability с транзитивными Bukkit 1.13/1.13.2; конфликт устранён исключением старого Bukkit, а не возвратом к Spigot API.
 
@@ -27,6 +27,12 @@
 ## Зафиксированные предупреждения
 
 Чистая компиляция не выявила несовместимых вызовов или ошибок Folia API. Компилятор сообщает, что `LimitedLives.java` использует deprecated API из совместимого слоя AnnoyingAPI/Bukkit. Это не scheduler/shutdown ошибка и должно быть устранено при последующей модернизации регистрации рецептов/metadata, не меняя бизнес-логику текущего этапа.
+
+## Integrations
+
+- WorldGuard был обновлён до 7.0.15 — последней проверенной стабильной версии с Java 21 bytecode. Запрос получает уже снятую в entity-owned event context `Location`; callback WorldGuard не планируется и не переносит живую entity между регионами.
+- PlaceholderAPI callback не ждёт scheduler future и не читает permission/location с неизвестного потока. UUID разрешается через identity/name directory, значения permission/max берутся из concurrent snapshot, а lives/grace — из UUID-only data service.
+- Полный lifecycle и shaded-library аудит находится в [`FOLIA_SHUTDOWN_AUDIT.md`](FOLIA_SHUTDOWN_AUDIT.md).
 
 ## Команды воспроизведения
 

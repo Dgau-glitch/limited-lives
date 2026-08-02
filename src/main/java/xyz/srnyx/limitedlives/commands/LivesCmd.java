@@ -264,6 +264,7 @@ public class LivesCmd extends AnnoyingCommand {
     }
 
     private void handleTransferOutcome(@NotNull AnnoyingSender sender, @NotNull String playerName, @NotNull LifeTransferService.Outcome outcome) {
+        if (sender.isPlayer) plugin.placeholders.capture(sender.getPlayer());
         switch (outcome.status()) {
             case SELF_ONLY:
                 new AnnoyingMessage(plugin, "give.self").send(sender);
@@ -288,13 +289,16 @@ public class LivesCmd extends AnnoyingCommand {
                     .replace("%amount%", transfer.amount())
                     .send(sender);
             final Player target = Bukkit.getPlayer(transfer.targetUuid());
-            if (target != null) plugin.feedback.deliver(target, () -> new AnnoyingMessage(plugin, "give.target")
-                    .replace("%player%", playerName)
-                    .replace("%target%", transfer.targetName())
-                    .replace("%playerlives%", transfer.sourceLives())
-                    .replace("%targetlives%", transfer.targetLives())
-                    .replace("%amount%", transfer.amount())
-                    .send(target));
+            if (target != null) plugin.feedback.deliver(target, () -> {
+                plugin.placeholders.capture(target);
+                new AnnoyingMessage(plugin, "give.target")
+                        .replace("%player%", playerName)
+                        .replace("%target%", transfer.targetName())
+                        .replace("%playerlives%", transfer.sourceLives())
+                        .replace("%targetlives%", transfer.targetLives())
+                        .replace("%amount%", transfer.amount())
+                        .send(target);
+            });
         }
     }
 

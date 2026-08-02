@@ -11,14 +11,13 @@ import xyz.srnyx.limitedlives.LimitedLives;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The only component allowed to submit work to Folia schedulers.
  */
 public final class FoliaExecutionService {
     @NotNull private final LimitedLives plugin;
-    @NotNull private final AtomicReference<PluginLifecycle> lifecycle = new AtomicReference<>(PluginLifecycle.STOPPED);
+    @NotNull private final LifecycleGate lifecycle = new LifecycleGate();
     @NotNull private final Set<ScheduledTask> tasks = ConcurrentHashMap.newKeySet();
 
     public FoliaExecutionService(@NotNull LimitedLives plugin) {
@@ -26,24 +25,26 @@ public final class FoliaExecutionService {
     }
 
     public void start() {
-        if (!lifecycle.compareAndSet(PluginLifecycle.STOPPED, PluginLifecycle.RUNNING)) {
-            throw new IllegalStateException("Execution service can only be started from STOPPED");
-        }
+        lifecycle.start();
     }
 
     @NotNull
     public PluginLifecycle getLifecycle() {
-        return lifecycle.get();
+        return lifecycle.state();
+    }
+
+    public long getRejectedSubmissions() {
+        return lifecycle.rejectedSubmissions();
     }
 
     public boolean runForEntity(@NotNull Entity entity, @NotNull Runnable action, @NotNull Runnable retired) {
-        if (!isRunning()) return false;
+        if (!acceptSubmission()) return false;
         final ScheduledTask task = entity.getScheduler().run(plugin, scheduled -> executeTracked(scheduled, action), retired);
         return track(task);
     }
 
     public boolean runForEntityOrNow(@NotNull Entity entity, @NotNull Runnable action, @NotNull Runnable retired) {
-        if (!isRunning()) return false;
+        if (!acceptSubmission()) return false;
         if (plugin.getServer().isOwnedByCurrentRegion(entity)) {
             action.run();
             return true;
@@ -52,19 +53,19 @@ public final class FoliaExecutionService {
     }
 
     public boolean runForRegion(@NotNull Location location, @NotNull Runnable action) {
-        if (!isRunning()) return false;
+        if (!acceptSubmission()) return false;
         final ScheduledTask task = plugin.getServer().getRegionScheduler().run(plugin, location, scheduled -> executeTracked(scheduled, action));
         return track(task);
     }
 
     public boolean runGlobal(@NotNull Runnable action) {
-        if (!isRunning()) return false;
+        if (!acceptSubmission()) return false;
         final ScheduledTask task = plugin.getServer().getGlobalRegionScheduler().run(plugin, scheduled -> executeTracked(scheduled, action));
         return track(task);
     }
 
     public boolean runGlobalOrNow(@NotNull Runnable action) {
-        if (!isRunning()) return false;
+        if (!acceptSubmission()) return false;
         if (Bukkit.isGlobalTickThread()) {
             action.run();
             return true;
@@ -73,13 +74,13 @@ public final class FoliaExecutionService {
     }
 
     public boolean runAsync(@NotNull Runnable action) {
-        if (!isRunning()) return false;
+        if (!acceptSubmission()) return false;
         final ScheduledTask task = plugin.getServer().getAsyncScheduler().runNow(plugin, scheduled -> executeTracked(scheduled, action));
         return track(task);
     }
 
     public boolean runAsyncDelayed(@NotNull Runnable action, long delay, @NotNull TimeUnit unit) {
-        if (!isRunning()) return false;
+        if (!acceptSubmission()) return false;
         final ScheduledTask task = plugin.getServer().getAsyncScheduler().runDelayed(plugin, scheduled -> executeTracked(scheduled, action), delay, unit);
         return track(task);
     }
@@ -89,16 +90,18 @@ public final class FoliaExecutionService {
      * This method never submits scheduler work and is safe to call from disable().
      */
     public void stop() {
-        if (!lifecycle.compareAndSet(PluginLifecycle.RUNNING, PluginLifecycle.STOPPING)) return;
+        if (!lifecycle.beginStopping()) return;
         for (final ScheduledTask task : tasks) task.cancel();
         tasks.clear();
-        plugin.getServer().getGlobalRegionScheduler().cancelTasks(plugin);
-        plugin.getServer().getAsyncScheduler().cancelTasks(plugin);
-        lifecycle.set(PluginLifecycle.STOPPED);
+        lifecycle.stopped();
     }
 
     private boolean isRunning() {
-        return lifecycle.get() == PluginLifecycle.RUNNING && plugin.isEnabled();
+        return lifecycle.isRunning(plugin.isEnabled());
+    }
+
+    private boolean acceptSubmission() {
+        return lifecycle.trySubmit(plugin.isEnabled());
     }
 
     private boolean track(ScheduledTask task) {

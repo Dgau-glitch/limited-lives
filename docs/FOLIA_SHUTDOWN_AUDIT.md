@@ -1,0 +1,37 @@
+# Folia shutdown and scheduler audit
+
+Date: 2026-08-01. Target: Folia 1.21.11 build 14.
+
+## Application-owned work
+
+| Source | Owner | Lifetime | Shutdown/retired behavior |
+|---|---|---|---|
+| `FoliaExecutionService.runForEntity*` | target entity | one shot | tracked `ScheduledTask` is cancelled by `stop`; retired callback contains no entity access |
+| `runForRegion` | location region | one shot | tracked and cancelled by `stop` |
+| `runGlobal*` | global region | one shot | tracked and cancelled by `stop` |
+| `runAsync*` | Folia async scheduler | one shot; delayed API currently has no caller | tracked and cancelled by `stop` |
+
+`LifecycleGate` rejects submissions unless both the plugin and lifecycle are `RUNNING`. Every rejection is counted by `getRejectedSubmissions()`. `stop()` changes the gate to `STOPPING` before cancelling tracked handles and does not call a scheduler getter or submit work.
+
+## Shaded AnnoyingAPI 5.2.1
+
+The built JAR was unpacked and scanned for scheduler, executor, future, timer and shutdown-hook references. Relevant classes:
+
+- `AnnoyingScheduler`: Folia-aware abstraction used internally by AnnoyingAPI. LimitedLives business code never calls it.
+- `DataManager.toggleIntervalCacheSaving`: may create an async interval cache task. LimitedLives uses synchronous writes (`useCacheDefault(false)`) and explicitly cancels/nulls this task during enable and every reload, before shutdown.
+- `AnnoyingDownload`: contains a legacy `Bukkit.getScheduler().callSyncMethod` fallback and async dependency-download path. LimitedLives declares no automatically downloaded plugin dependencies, so this path is unreachable in its configured lifecycle. It must not be reused for future dependencies.
+- `MiscUtility.CPU_SCHEDULER` and `IO_SCHEDULER`: static Java scheduled executors. They are synchronously stopped with `shutdownNow()` from `disable()` and do not schedule Bukkit work.
+- bStats is disabled by default in the packaged `bstats.yml`. Existing installations that explicitly enable it are also safe: `disable()` calls its public `shutdown()` method before stopping the shaded Java executors.
+
+No shutdown hook (`Runtime.addShutdownHook`) was found in the application or shaded AnnoyingAPI classes. `AnnoyingPlugin.onDisable()` is final: it synchronously saves its cache and closes SQL before invoking LimitedLives `disable()`. Because JavaPlugin is already disabled, `LifecycleGate` rejects submissions for the whole callback; LimitedLives then closes its store, cancels tracked task handles and stops the two shaded Java executors without submitting any task.
+
+## Reproducible checks
+
+```bash
+./gradlew clean test shadowJar
+rg -n "BukkitScheduler|BukkitRunnable|Bukkit.getScheduler|plugin.scheduler|FoliaLib|FoliaScheduler" src build.gradle.kts
+rg -n "getRegionScheduler|getGlobalRegionScheduler|getAsyncScheduler|getScheduler\\(" src/main/java
+./scripts/folia-smoke.sh
+```
+
+The smoke harness verifies the Folia and Mojang server downloads by checksum, preloads pinned runtime libraries for network-isolated CI, starts Folia twice against the same plugin/data directory, forces four region scheduler threads for the second run, executes reload, performs a clean stop, and rejects ownership, retired-entity, schedule-after-disable and LimitedLives error signatures in both logs.

@@ -68,7 +68,7 @@ public class PlayerListener extends AnnoyingListener {
         // Check death cause
         if (cause != null && !plugin.config.deathCauses.isEmpty() && !plugin.config.deathCauses.contains(cause)) return;
         // Check WorldGuard regions
-        if (plugin.worldGuard != null && !plugin.worldGuard.test(player)) return;
+        if (plugin.worldGuard != null && !plugin.worldGuard.test(player, player.getLocation())) return;
         // Check grace
         final PlayerManager manager = new PlayerManager(plugin, player);
         if (cause == null || !plugin.config.gracePeriod.bypassCauses.contains(cause)) {
@@ -151,6 +151,7 @@ public class PlayerListener extends AnnoyingListener {
     public void onPlayerJoin(@NotNull PlayerJoinEvent event) {
         final Player player = event.getPlayer();
         plugin.onlinePlayers.joined(player);
+        plugin.placeholders.capture(player);
         final EntityData data = new EntityData(plugin, player);
 
         // Convert old data
@@ -168,5 +169,6 @@ public class PlayerListener extends AnnoyingListener {
     @EventHandler
     public void onPlayerQuit(@NotNull PlayerQuitEvent event) {
         plugin.onlinePlayers.quit(event.getPlayer());
+        plugin.placeholders.remove(event.getPlayer().getUniqueId());
     }
 }
