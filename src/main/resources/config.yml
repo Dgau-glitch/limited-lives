@@ -1,3 +1,6 @@
+# LimitedLives configuration for Folia 1.21.11+
+# Reload with /lifereload. The new configuration is published atomically and
+# world/recipe changes are applied from the Folia global-region context.
 DOCUMENTATION: https://annoying-api.srnyx.com/wiki/File-objects
 
 
@@ -10,11 +13,16 @@ lives:
   # The amount of lives that triggers the punishment commands
   min: 0
 
+  # Whether a victim loses a life when killed by another player (PvP).
+  # This only controls the victim's life loss. If false, the kill is ignored by
+  # LimitedLives, so the killer cannot gain a life through obtaining.stealing.
+  lose-on-player-kill: true
+
 
 
 # The causes that will result in a player to losing a life, leave empty for all causes
 # Available causes:
-# - https://srnyx.com/docs/spigot/org/bukkit/event/entity/EntityDamageEvent.DamageCause.html
+# - https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/event/entity/EntityDamageEvent.DamageCause.html
 # - PLAYER_ATTACK: Death caused by another player (PVP)
 death-causes: []
 
@@ -48,8 +56,9 @@ worlds-blacklist:
 
 
 
-# THE keepInventory GAMERULE MUST BE SET TO false FOR THIS TO WORK (the plugin will disable it if it's enabled)!
-# If it isn't, some players' inventories may be permanently lost!
+# When enabled, LimitedLives applies the configured inventory action in the
+# player's death-event context. During reload it safely disables the vanilla
+# keepInventory gamerule in every loaded world from Folia's global context.
 keep-inventory:
   # This will toggle this entire feature on or off
   enabled: false
@@ -84,28 +93,28 @@ grace-period:
 
   # Death causes that will bypass the grace period so the player still loses a life
   # Available causes:
-  # - https://srnyx.com/docs/spigot/org/bukkit/event/entity/EntityDamageEvent.DamageCause.html
+  # - https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/event/entity/EntityDamageEvent.DamageCause.html
   # - PLAYER_ATTACK: Death caused by another player (PVP)
   bypass-causes: []
 
   # Damage causes that will be cancelled while a player is in the grace period
   # Available causes:
-  # - https://srnyx.com/docs/spigot/org/bukkit/event/entity/EntityDamageEvent.DamageCause.html
+  # - https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/event/entity/EntityDamageEvent.DamageCause.html
   # - PLAYER_ATTACK: Damage caused when a player attacks another player (PVP)
   disabled-damage-causes: []
 
 
 
 commands:
-  # The commands that will be executed when a player loses all their lives (executed by the console).
-  # It's best to have the doImmediateRespawn gamerule set to true and then only use death commands.
+  # Commands are executed by the console through Folia's GlobalRegionScheduler.
+  # Player-bound messages and inventory changes remain on the player's EntityScheduler.
   # %player% - The player that lost all their lives
   # %killer% - The player that got the final kill on %player%. If %player% died from a non-player cause, any commands that use %killer% will be ignored
   punishment:
     # Executed right when the player dies and/or when they lose all their lives from a command (ex: /lives remove)
     death: []
-    # Executed when the player respawns
-    # FOLIA: These do not work on Folia servers! Please enable the doImmediateRespawn gamerule and use death commands instead
+    # Executed once after the player respawns. Respawn commands are supported on
+    # Folia and are submitted from the respawned player's owning context.
     respawn:
       - "gamemode spectator %player%"
   

@@ -26,6 +26,7 @@ import xyz.srnyx.limitedlives.LimitedLives;
 import xyz.srnyx.limitedlives.managers.player.PlayerManager;
 import xyz.srnyx.limitedlives.managers.player.exception.ActionException;
 import xyz.srnyx.limitedlives.managers.player.exception.LessThanMinLives;
+import xyz.srnyx.limitedlives.services.player.LifeLossPolicy;
 
 import java.util.Map;
 import java.util.UUID;
@@ -65,8 +66,8 @@ public class PlayerListener extends AnnoyingListener {
             cause = damageEvent != null ? damageEvent.getCause().name() : null;
         }
 
-        // Check death cause
-        if (cause != null && !plugin.config.deathCauses.isEmpty() && !plugin.config.deathCauses.contains(cause)) return;
+        // Check PvP toggle and death cause before entering the life-loss flow.
+        if (!LifeLossPolicy.shouldLoseLife(isPvp, plugin.config.lives.loseOnPlayerKill, cause, plugin.config.deathCauses)) return;
         // Check WorldGuard regions
         if (plugin.worldGuard != null && !plugin.worldGuard.test(player, player.getLocation())) return;
         // Check grace
